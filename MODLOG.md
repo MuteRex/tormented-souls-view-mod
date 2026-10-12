@@ -35,3 +35,12 @@ Goal: toggleable third-person / first-person camera + red "you are here" marker 
   "view camera ready". Loader route WORKS under Proton with no DLL overrides.
 - NEXT: in-game test with a loaded save (needs user): F6/R3 cycle Original->Third->First, mouse/right stick look,
   puzzle close-up yields, map marker log line "map marker: scene ..." + red dot visible.
+- 2026-10-13 v0.2.0 (user test feedback on v0.1):
+  * Camera rotated while inspecting/rotating items (shared look input). Fix: only read look input when
+    PlayerMovement.GamePaused is false (GameplayState_FreePlay unpauses on enter, pauses on exit).
+  * Map dot was room-centre only and "nowhere near" in long rooms (Corridor_1D). Rooms are separate scenes
+    each around its own origin (NavMesh bounds of Corridor_1C and 1D overlap) => no global transform.
+    New: per-room fit of footprint (NavMesh.CalculateTriangulation, else floor colliders near feet) to the
+    highlight rect in map-local space over 8 axis-aligned orientations; score = scale anisotropy + door
+    spawn points (SceneEntrancePoints -> DoorConnector.SceneIdOnOpen -> neighbour room rect) distance.
+    Dot follows player each frame. Diagnostics logged per map open.

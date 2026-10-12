@@ -80,7 +80,11 @@ namespace TSViewMod
 
             CinemachineBrain brain = m_cameraManager.GetBrain();
             bool live = brain != null && brain.ActiveVirtualCamera == (ICinemachineCamera)m_vcam;
-            if (live && Time.timeScale > 0f)
+            // GameplayState_FreePlay unpauses the player on enter and pauses it on exit, so GamePaused is true
+            // while inspecting/rotating items, in menus and during pickups (which share the look input).
+            PlayerMovement movement = m_player.GetPlayerMovement();
+            bool freePlay = movement == null || !movement.GamePaused;
+            if (live && freePlay && Time.timeScale > 0f)
             {
                 ReadLookInput();
             }
