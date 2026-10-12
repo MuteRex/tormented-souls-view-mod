@@ -51,3 +51,10 @@ Goal: toggleable third-person / first-person camera + red "you are here" marker 
   1-IoU + 0.1*door penalty. Row-order self-test logged once. Falls back to room centre if IoU < 0.2.
   Also: RE2-style inspect reset (R / middle mouse / R3) via Gui3DObject.m_initialRot; R3 view-cycle limited to free play.
   Gotcha: `pgrep -f TormentedSouls.exe` matches the shell running it -> wait on the reaper PID instead.
+- v0.4.0: map open hitched 1-2 s (fit recomputed every open: ~35M IoU samples in one frame). Now: per-room fits cached
+  in TormentedSouls_Data/TSViewMod_mapcache.txt (key scene|tab|highlight, CacheVersion "1"); uncached rooms fit in a
+  coroutine with a 4 ms/frame budget, coarse pass sampled every 2nd cell. Dot hidden until its fit is ready.
+  Last v0.3 fit for Corridor_1D: orientation 6, scale 0.0679, IoU ~0.40 (user confirmed position correct).
+  Inspect reset: maps turn to face the Gui3DObject camera flat & upright (axes from the opening pose); other items
+  go to m_initialRot. "[R]/[R3] Reset View" entry cloned into HelpersSwitcher's active bar (game scripts stripped,
+  icons hidden); bar hierarchy dumped to log once.

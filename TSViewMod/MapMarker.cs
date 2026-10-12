@@ -1,8 +1,11 @@
+using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.SceneManagement;
+using Debug = UnityEngine.Debug;
 
 namespace TSViewMod
 {
@@ -24,6 +27,8 @@ namespace TSViewMod
             public Transform dot;
             public Fit fit;
             public bool hasFit;
+            public bool ready;
+            public string key;
             public float normalCoord;
         }
 
@@ -152,12 +157,7 @@ namespace TSViewMod
             marked.vAxis = marked.nAxis == 2 ? 1 : 2;
             marked.dotSize = Mathf.Max(Mathf.Max(spread[marked.uAxis], spread[marked.vAxis]) * 0.03f, 0.002f);
 
-            var log = new StringBuilder();
-            log.Append("map marker: scene ").Append(scene).Append(", normal axis ").Append(marked.nAxis);
-            WorldMask world = WorldMask.Build(log);
-            List<KeyValuePair<string, Vector2>> doors = DoorPoints();
-            log.Append(", doors ").Append(doors.Count);
-
+            var pending = new List<KeyValuePair<RoomShape, RoomDot>>();
             var seenHighlights = new HashSet<GameObject>();
             foreach (RoomShape room in rooms)
             {
@@ -165,26 +165,85 @@ namespace TSViewMod
                 {
                     continue;
                 }
-                var dot = new RoomDot { highlight = room.highlight, normalCoord = room.bounds.center[marked.nAxis] };
-                if (world != null)
-                {
-                    MapMask mask = RenderMapMask(map, room, marked.uAxis, marked.vAxis, marked.nAxis);
-                    if (mask != null)
-                    {
-                        dot.fit = FitShape(world, mask, doors, rooms, marked.uAxis, marked.vAxis, log);
-                        dot.hasFit = dot.fit.iou > 0.2f;
-                        log.Append("\n  tab ").Append(room.tab).Append(": orientation ").Append(dot.fit.orientation)
-                            .Append(" scale ").Append(dot.fit.scale.ToString("0.00000")).Append(" IoU ").Append(dot.fit.iou.ToString("0.000"))
-                            .Append(dot.hasFit ? "" : " (too weak, using room centre)");
-                    }
-                }
+                var dot = new RoomDot { highlight = room.highlight, normalCoord = room.bounds.center[marked.nAxis], key = scene + "|" + room.tab + "|" + room.highlight.name };
                 dot.dot = CreateDot(room.highlight);
+                if (FitCache.TryGet(dot.key, out Fit cached))
+                {
+                    dot.fit = cached;
+                    dot.hasFit = cached.iou > 0.2f;
+                    dot.ready = true;
+                }
+                else
+                {
+                    pending.Add(new KeyValuePair<RoomShape, RoomDot>(room, dot));
+                }
                 marked.rooms.Add(dot);
             }
-            log.Append("\n  dots ").Append(marked.rooms.Count);
-            Loader.Log(log.ToString());
             Apply(marked);
+            if (pending.Count > 0)
+            {
+                StartCoroutine(FitRooms(marked, rooms, pending));
+            }
+            else
+            {
+                Loader.Log("map marker: scene " + scene + ", " + marked.rooms.Count + " dot(s) from cache");
+            }
             return marked;
+        }
+
+        // Works out the world->map fit for rooms not in the cache, a few milliseconds per frame.
+        private IEnumerator FitRooms(Marked marked, List<RoomShape> rooms, List<KeyValuePair<RoomShape, RoomDot>> pending)
+        {
+            var clock = Stopwatch.StartNew();
+            var log = new StringBuilder();
+            log.Append("map marker: scene ").Append(marked.scene).Append(", normal axis ").Append(marked.nAxis);
+            WorldMask world = WorldMask.Build(log);
+            List<KeyValuePair<string, Vector2>> doors = DoorPoints();
+            log.Append(", doors ").Append(doors.Count);
+            foreach (KeyValuePair<RoomShape, RoomDot> item in pending)
+            {
+                RoomDot dot = item.Value;
+                MapMask mask = world != null && marked.helper != null ? RenderMapMask(marked.helper.transform, item.Key, marked.uAxis, marked.vAxis, marked.nAxis) : null;
+                if (mask != null)
+                {
+                    var result = new Fit[1];
+                    yield return FitShape(world, mask, doors, rooms, marked.uAxis, marked.vAxis, log, result);
+                    dot.fit = result[0];
+                    dot.hasFit = dot.fit.iou > 0.2f;
+                    FitCache.Put(dot.key, dot.fit);
+                    log.Append("\n  ").Append(dot.key).Append(": orientation ").Append(dot.fit.orientation)
+                        .Append(" scale ").Append(dot.fit.scale.ToString("0.00000")).Append(" IoU ").Append(dot.fit.iou.ToString("0.000"))
+                        .Append(dot.hasFit ? "" : " (too weak, using room centre)");
+                }
+                dot.ready = true;
+                if (marked.helper == null)
+                {
+                    yield break;
+                }
+            }
+            FitCache.Save();
+            log.Append("\n  fitted in ").Append(clock.ElapsedMilliseconds).Append(" ms (spread over frames), cached");
+            Loader.Log(log.ToString());
+            if (marked.helper != null)
+            {
+                Apply(marked);
+            }
+        }
+
+        public static int NormalAxis(MapHelperRoom helper)
+        {
+            Vector3 spreadMin = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            Vector3 spreadMax = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+            foreach (MapHelperStringToGameObject entry in helper.sceneToGameObjects)
+            {
+                if (entry != null && entry.highlight != null && TryLocalBounds(helper.transform, entry.highlight, out Bounds b))
+                {
+                    spreadMin = Vector3.Min(spreadMin, b.min);
+                    spreadMax = Vector3.Max(spreadMax, b.max);
+                }
+            }
+            Vector3 spread = spreadMax - spreadMin;
+            return spread.x <= spread.y && spread.x <= spread.z ? 0 : spread.y <= spread.z ? 1 : 2;
         }
 
         // ---------- fitting ----------
@@ -203,16 +262,98 @@ namespace TSViewMod
             }
         }
 
-        private static Fit FitShape(WorldMask world, MapMask map, List<KeyValuePair<string, Vector2>> doors, List<RoomShape> rooms, int u, int v, StringBuilder log)
+        // Fits never change for a room, so they are kept in TormentedSouls_Data/TSViewMod_mapcache.txt.
+        private static class FitCache
+        {
+            private static Dictionary<string, Fit> s_fits;
+
+            private static string FilePath => System.IO.Path.Combine(Application.dataPath, "TSViewMod_mapcache.txt");
+
+            public static bool TryGet(string key, out Fit fit)
+            {
+                Load();
+                return s_fits.TryGetValue(key, out fit);
+            }
+
+            public static void Put(string key, Fit fit)
+            {
+                Load();
+                s_fits[key] = fit;
+            }
+
+            private static void Load()
+            {
+                if (s_fits != null)
+                {
+                    return;
+                }
+                s_fits = new Dictionary<string, Fit>();
+                try
+                {
+                    if (!System.IO.File.Exists(FilePath))
+                    {
+                        return;
+                    }
+                    var inv = System.Globalization.CultureInfo.InvariantCulture;
+                    foreach (string line in System.IO.File.ReadAllLines(FilePath))
+                    {
+                        string[] f = line.Split('\t');
+                        if (f.Length < 7 || f[0] != CacheVersion)
+                        {
+                            continue;
+                        }
+                        s_fits[f[1]] = new Fit
+                        {
+                            orientation = int.Parse(f[2], inv),
+                            scale = float.Parse(f[3], inv),
+                            offset = new Vector2(float.Parse(f[4], inv), float.Parse(f[5], inv)),
+                            iou = float.Parse(f[6], inv)
+                        };
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Loader.Log("map cache unreadable, refitting: " + e.Message);
+                    s_fits.Clear();
+                }
+            }
+
+            public static void Save()
+            {
+                try
+                {
+                    var inv = System.Globalization.CultureInfo.InvariantCulture;
+                    var lines = new List<string> { "# TSViewMod map fits. Delete this file to recompute." };
+                    foreach (KeyValuePair<string, Fit> pair in s_fits)
+                    {
+                        Fit f = pair.Value;
+                        lines.Add(string.Join("\t", CacheVersion, pair.Key, f.orientation.ToString(inv), f.scale.ToString("R", inv),
+                            f.offset.x.ToString("R", inv), f.offset.y.ToString("R", inv), f.iou.ToString("R", inv)));
+                    }
+                    System.IO.File.WriteAllLines(FilePath, lines);
+                }
+                catch (System.Exception e)
+                {
+                    Loader.Log("map cache not saved: " + e.Message);
+                }
+            }
+        }
+
+        // Bump when the fitting method changes so old entries are recomputed.
+        private const string CacheVersion = "1";
+
+        private const long FrameBudgetMs = 4;
+
+        private static IEnumerator FitShape(WorldMask world, MapMask map, List<KeyValuePair<string, Vector2>> doors, List<RoomShape> rooms, int u, int v, StringBuilder log, Fit[] result)
         {
             float mapArea = map.count * map.cell * map.cell;
             float worldArea = world.count * world.cell * world.cell;
             float s0 = Mathf.Sqrt(mapArea / Mathf.Max(worldArea, 1e-6f));
             Vector2 worldCentroid = world.Centroid();
             Vector2 mapCentroid = map.Centroid();
-
             Rect2 roomRect = map.rect;
             float diag = roomRect.Size.magnitude;
+            var slice = Stopwatch.StartNew();
             var best = new Fit { score = float.MaxValue };
             for (int o = 0; o < 8; o++)
             {
@@ -226,17 +367,22 @@ namespace TSViewMod
                         for (int dx = -6; dx <= 6; dx++)
                         {
                             var fit = new Fit { orientation = o, scale = s, offset = t0 + new Vector2(dx, dy) * map.cell };
-                            fit.iou = IoU(world, map, fit);
+                            fit.iou = IoU(world, map, fit, 2);
                             fit.score = 1f - fit.iou;
                             if (fit.score < orientBest.score)
                             {
                                 orientBest = fit;
                             }
                         }
+                        if (slice.ElapsedMilliseconds > FrameBudgetMs)
+                        {
+                            yield return null;
+                            slice.Restart();
+                        }
                     }
                 }
-                // Refine scale and offset around the best coarse candidate.
                 Fit coarse = orientBest;
+                orientBest.score = float.MaxValue;
                 for (int ks = -4; ks <= 4; ks++)
                 {
                     for (int dy = -2; dy <= 2; dy++)
@@ -244,13 +390,18 @@ namespace TSViewMod
                         for (int dx = -2; dx <= 2; dx++)
                         {
                             var fit = new Fit { orientation = o, scale = coarse.scale * (1f + ks * 0.01f), offset = coarse.offset + new Vector2(dx, dy) * map.cell * 0.5f };
-                            fit.iou = IoU(world, map, fit);
+                            fit.iou = IoU(world, map, fit, 1);
                             fit.score = 1f - fit.iou;
                             if (fit.score < orientBest.score)
                             {
                                 orientBest = fit;
                             }
                         }
+                    }
+                    if (slice.ElapsedMilliseconds > FrameBudgetMs)
+                    {
+                        yield return null;
+                        slice.Restart();
                     }
                 }
                 orientBest.score += 0.1f * DoorPenalty(orientBest, doors, rooms, u, v, roomRect, diag);
@@ -260,29 +411,33 @@ namespace TSViewMod
                     best = orientBest;
                 }
             }
-            return best;
+            result[0] = best;
         }
 
-        private static float IoU(WorldMask world, MapMask map, Fit fit)
+        private static float IoU(WorldMask world, MapMask map, Fit fit, int step)
         {
             // Walk the map mask grid; map each cell centre back into the world mask.
             Vector2 a = Orient(fit.orientation, Vector2.right);
             Vector2 b = Orient(fit.orientation, Vector2.up);
             float inv = 1f / fit.scale;
             int inter = 0;
+            int mapInside = 0;
             int worldInside = 0;
-            for (int y = 0; y < MaskRes; y++)
+            for (int y = 0; y < MaskRes; y += step)
             {
-                for (int x = 0; x < MaskRes; x++)
+                for (int x = 0; x < MaskRes; x += step)
                 {
-                    Vector2 uv = map.CellCentre(x, y);
-                    Vector2 q = (uv - fit.offset) * inv;
-                    Vector2 w = new Vector2(Vector2.Dot(q, a), Vector2.Dot(q, b));
-                    bool inWorld = world.Get(w);
+                    bool inMap = map.mask[y * MaskRes + x];
+                    Vector2 q = (map.CellCentre(x, y) - fit.offset) * inv;
+                    bool inWorld = world.Get(new Vector2(q.x * a.x + q.y * a.y, q.x * b.x + q.y * b.y));
+                    if (inMap)
+                    {
+                        mapInside++;
+                    }
                     if (inWorld)
                     {
                         worldInside++;
-                        if (map.mask[y * MaskRes + x])
+                        if (inMap)
                         {
                             inter++;
                         }
@@ -290,9 +445,9 @@ namespace TSViewMod
                 }
             }
             // World cells that land outside the map grid count against the fit too.
-            float worldCellsInMapUnits = world.count * world.cell * world.cell * fit.scale * fit.scale / (map.cell * map.cell);
-            float worldTotal = Mathf.Max(worldInside, worldCellsInMapUnits);
-            float union = map.count + worldTotal - inter;
+            float sampleCell = map.cell * step;
+            float worldCells = world.count * world.cell * world.cell * fit.scale * fit.scale / (sampleCell * sampleCell);
+            float union = mapInside + Mathf.Max(worldInside, worldCells) - inter;
             return union > 0f ? inter / union : 0f;
         }
 
@@ -762,7 +917,7 @@ namespace TSViewMod
             {
                 if (room.dot != null)
                 {
-                    room.dot.gameObject.SetActive(m_enabled);
+                    room.dot.gameObject.SetActive(m_enabled && room.ready);
                 }
             }
         }
