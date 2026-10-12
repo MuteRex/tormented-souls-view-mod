@@ -44,3 +44,10 @@ Goal: toggleable third-person / first-person camera + red "you are here" marker 
     highlight rect in map-local space over 8 axis-aligned orientations; score = scale anisotropy + door
     spawn points (SceneEntrancePoints -> DoorConnector.SceneIdOnOpen -> neighbour room rect) distance.
     Dot follows player each frame. Diagnostics logged per map open.
+- v0.3.0: user screenshot showed current-room highlight (East Wing Hall = Corridor_1D) is an L-shape; rect fit put the
+  dot in Delivery Room and o4/o1 scores were a coin flip (0.144 vs 0.150). New fit: highlight mesh drawn to a 64x64
+  mask via CommandBuffer + Hidden/Internal-Colored (meshes not CPU-readable), navmesh triangles rasterised to a world
+  mask, search 8 orientations x scale (area-ratio seed, +-15%) x offset (centroid seed, +-6 cells, then refine), score
+  1-IoU + 0.1*door penalty. Row-order self-test logged once. Falls back to room centre if IoU < 0.2.
+  Also: RE2-style inspect reset (R / middle mouse / R3) via Gui3DObject.m_initialRot; R3 view-cycle limited to free play.
+  Gotcha: `pgrep -f TormentedSouls.exe` matches the shell running it -> wait on the reaper PID instead.

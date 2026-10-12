@@ -10,57 +10,13 @@ namespace TSViewMod
     // This tints that glow red and puts a pulsing red dot at the player's actual position.
     //
     // Every room is its own scene built around its own origin, so there is no global world->map transform.
-    // Per room we fit one: the room's walkable footprint (NavMesh, else floor colliders) is matched to the
-    // room's highlight rectangle on the map under each of the 8 axis-aligned orientations, and the door
-    // spawn points (SceneEntrancePoints) pick the orientation whose doors land next to the right neighbour rooms.
+    // Per room we fit one by shape: the room's highlight mesh is drawn into a small mask on the GPU (the
+    // meshes are not CPU-readable), the room's NavMesh is rasterised into a world mask, and the 8 axis-aligned
+    // orientations x scale x offset are searched for the best overlap (IoU). Door spawn points break ties.
     public class MapMarker : MonoBehaviour
     {
         private static readonly Color MarkerRed = new Color(1f, 0.05f, 0.05f, 1f);
-
-        private struct Rect2
-        {
-            public Vector2 min;
-            public Vector2 max;
-            public Vector2 Size => max - min;
-            public Vector2 Center => (min + max) * 0.5f;
-
-            public static Rect2 Empty => new Rect2 { min = new Vector2(float.MaxValue, float.MaxValue), max = new Vector2(float.MinValue, float.MinValue) };
-
-            public bool IsValid => max.x > min.x && max.y > min.y;
-
-            public void Add(Vector2 p)
-            {
-                min = Vector2.Min(min, p);
-                max = Vector2.Max(max, p);
-            }
-
-            public float Distance(Vector2 p)
-            {
-                float dx = Mathf.Max(min.x - p.x, 0f, p.x - max.x);
-                float dy = Mathf.Max(min.y - p.y, 0f, p.y - max.y);
-                return Mathf.Sqrt(dx * dx + dy * dy);
-            }
-
-            public override string ToString()
-            {
-                return "[" + min.x.ToString("0.000") + "," + min.y.ToString("0.000") + " .. " + max.x.ToString("0.000") + "," + max.y.ToString("0.000") + "]";
-            }
-        }
-
-        // world (x,z) -> map plane (u,v): rotate/mirror by orientation, then per-axis scale and offset.
-        private struct Fit
-        {
-            public int orientation;
-            public Vector2 scale;
-            public Vector2 offset;
-            public float score;
-
-            public Vector2 Apply(Vector2 world)
-            {
-                Vector2 r = Orient(orientation, world);
-                return new Vector2(r.x * scale.x + offset.x, r.y * scale.y + offset.y);
-            }
-        }
+        private const int MaskRes = 64;
 
         private class RoomDot
         {
@@ -87,6 +43,9 @@ namespace TSViewMod
         private bool m_enabled;
         private float m_nextScan;
         private Material m_material;
+        private Material m_maskMaterial;
+        private PlayerController m_player;
+        private int m_flipChecked; // 0 unknown, 1 normal, -1 rows flipped
 
         private void Start()
         {
@@ -127,7 +86,10 @@ namespace TSViewMod
                 }
             }
 
-            PlayerController player = FindPlayer();
+            if (m_player == null)
+            {
+                m_player = FindObjectOfType<PlayerController>();
+            }
             Camera viewer = Camera.main;
             float pulse = 1f + 0.25f * Mathf.Sin(Time.unscaledTime * 6f);
             foreach (Marked marked in m_marked)
@@ -139,9 +101,9 @@ namespace TSViewMod
                         continue;
                     }
                     Vector3 local;
-                    if (room.hasFit && player != null)
+                    if (room.hasFit && m_player != null)
                     {
-                        Vector3 p = player.transform.position;
+                        Vector3 p = m_player.transform.position;
                         Vector2 uv = room.fit.Apply(new Vector2(p.x, p.z));
                         local = Vector3.zero;
                         local[marked.uAxis] = uv.x;
@@ -163,24 +125,12 @@ namespace TSViewMod
             }
         }
 
-        private PlayerController m_player;
-
-        private PlayerController FindPlayer()
-        {
-            if (m_player == null)
-            {
-                m_player = FindObjectOfType<PlayerController>();
-            }
-            return m_player;
-        }
-
         private Marked Mark(MapHelperRoom helper, string scene)
         {
             var marked = new Marked { helper = helper, originalTint = helper.tintColor, scene = scene };
             Transform map = helper.transform;
 
-            // Every room rectangle on this map, in the map object's local space.
-            var roomRects = new Dictionary<string, Rect3>();
+            var rooms = new List<RoomShape>();
             Vector3 spreadMin = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
             Vector3 spreadMax = new Vector3(float.MinValue, float.MinValue, float.MinValue);
             foreach (MapHelperStringToGameObject entry in helper.sceneToGameObjects)
@@ -189,107 +139,184 @@ namespace TSViewMod
                 {
                     continue;
                 }
-                if (!TryLocalBounds(map, entry.highlight, out Bounds b))
+                if (TryLocalBounds(map, entry.highlight, out Bounds b))
                 {
-                    continue;
-                }
-                spreadMin = Vector3.Min(spreadMin, b.min);
-                spreadMax = Vector3.Max(spreadMax, b.max);
-                string key = entry.name + "#" + entry.tabID;
-                if (!roomRects.ContainsKey(key))
-                {
-                    roomRects[key] = new Rect3 { name = entry.name, tab = entry.tabID, bounds = b, highlight = entry.highlight };
+                    spreadMin = Vector3.Min(spreadMin, b.min);
+                    spreadMax = Vector3.Max(spreadMax, b.max);
+                    rooms.Add(new RoomShape { name = entry.name, tab = entry.tabID, bounds = b, highlight = entry.highlight });
                 }
             }
             Vector3 spread = spreadMax - spreadMin;
             marked.nAxis = spread.x <= spread.y && spread.x <= spread.z ? 0 : spread.y <= spread.z ? 1 : 2;
             marked.uAxis = marked.nAxis == 0 ? 1 : 0;
             marked.vAxis = marked.nAxis == 2 ? 1 : 2;
-            float mapSize = Mathf.Max(spread[marked.uAxis], spread[marked.vAxis]);
+            marked.dotSize = Mathf.Max(Mathf.Max(spread[marked.uAxis], spread[marked.vAxis]) * 0.03f, 0.002f);
 
-            Footprint footprint = Footprint.Measure();
-            List<KeyValuePair<string, Vector2>> doors = DoorPoints();
             var log = new StringBuilder();
-            log.Append("map marker: scene ").Append(scene).Append(", map plane normal axis ").Append(marked.nAxis)
-                .Append(", footprint ").Append(footprint.source).Append(' ').Append(footprint.rect).Append(", doors ").Append(doors.Count);
+            log.Append("map marker: scene ").Append(scene).Append(", normal axis ").Append(marked.nAxis);
+            WorldMask world = WorldMask.Build(log);
+            List<KeyValuePair<string, Vector2>> doors = DoorPoints();
+            log.Append(", doors ").Append(doors.Count);
 
-            foreach (Rect3 room in roomRects.Values)
+            var seenHighlights = new HashSet<GameObject>();
+            foreach (RoomShape room in rooms)
             {
-                if (room.name != scene)
+                if (room.name != scene || !seenHighlights.Add(room.highlight))
                 {
                     continue;
                 }
-                Rect2 roomRect = room.To2D(marked.uAxis, marked.vAxis);
                 var dot = new RoomDot { highlight = room.highlight, normalCoord = room.bounds.center[marked.nAxis] };
-                if (footprint.rect.IsValid && roomRect.IsValid)
+                if (world != null)
                 {
-                    dot.fit = BestFit(footprint.rect, roomRect, doors, roomRects, marked.uAxis, marked.vAxis, log);
-                    dot.hasFit = true;
-                    log.Append("\n  tab ").Append(room.tab).Append(" room ").Append(roomRect).Append(" -> orientation ").Append(dot.fit.orientation)
-                        .Append(" score ").Append(dot.fit.score.ToString("0.000"));
+                    MapMask mask = RenderMapMask(map, room, marked.uAxis, marked.vAxis, marked.nAxis);
+                    if (mask != null)
+                    {
+                        dot.fit = FitShape(world, mask, doors, rooms, marked.uAxis, marked.vAxis, log);
+                        dot.hasFit = dot.fit.iou > 0.2f;
+                        log.Append("\n  tab ").Append(room.tab).Append(": orientation ").Append(dot.fit.orientation)
+                            .Append(" scale ").Append(dot.fit.scale.ToString("0.00000")).Append(" IoU ").Append(dot.fit.iou.ToString("0.000"))
+                            .Append(dot.hasFit ? "" : " (too weak, using room centre)");
+                    }
                 }
                 dot.dot = CreateDot(room.highlight);
                 marked.rooms.Add(dot);
             }
-            marked.dotSize = Mathf.Max(mapSize * 0.03f, 0.002f);
-            log.Append("\n  dots ").Append(marked.rooms.Count).Append(", dot size ").Append(marked.dotSize.ToString("0.0000"));
+            log.Append("\n  dots ").Append(marked.rooms.Count);
             Loader.Log(log.ToString());
             Apply(marked);
             return marked;
         }
 
-        private static Fit BestFit(Rect2 world, Rect2 room, List<KeyValuePair<string, Vector2>> doors, Dictionary<string, Rect3> rooms, int u, int v, StringBuilder log)
+        // ---------- fitting ----------
+
+        private struct Fit
         {
+            public int orientation;
+            public float scale;
+            public Vector2 offset;
+            public float iou;
+            public float score;
+
+            public Vector2 Apply(Vector2 world)
+            {
+                return Orient(orientation, world) * scale + offset;
+            }
+        }
+
+        private static Fit FitShape(WorldMask world, MapMask map, List<KeyValuePair<string, Vector2>> doors, List<RoomShape> rooms, int u, int v, StringBuilder log)
+        {
+            float mapArea = map.count * map.cell * map.cell;
+            float worldArea = world.count * world.cell * world.cell;
+            float s0 = Mathf.Sqrt(mapArea / Mathf.Max(worldArea, 1e-6f));
+            Vector2 worldCentroid = world.Centroid();
+            Vector2 mapCentroid = map.Centroid();
+
+            Rect2 roomRect = map.rect;
+            float diag = roomRect.Size.magnitude;
             var best = new Fit { score = float.MaxValue };
-            float diag = room.Size.magnitude;
             for (int o = 0; o < 8; o++)
             {
-                Rect2 oriented = Rect2.Empty;
-                oriented.Add(Orient(o, world.min));
-                oriented.Add(Orient(o, world.max));
-                oriented.Add(Orient(o, new Vector2(world.min.x, world.max.y)));
-                oriented.Add(Orient(o, new Vector2(world.max.x, world.min.y)));
-                var fit = new Fit
+                var orientBest = new Fit { score = float.MaxValue };
+                foreach (float k in new[] { 0.85f, 0.92f, 1f, 1.08f, 1.15f })
                 {
-                    orientation = o,
-                    scale = new Vector2(room.Size.x / oriented.Size.x, room.Size.y / oriented.Size.y)
-                };
-                fit.offset = new Vector2(room.min.x - oriented.min.x * fit.scale.x, room.min.y - oriented.min.y * fit.scale.y);
-
-                // A map has one scale for both axes, so a fit that stretches the room is wrong.
-                float score = Mathf.Abs(Mathf.Log(Mathf.Abs(fit.scale.x / fit.scale.y)));
-                int matchedDoors = 0;
-                foreach (KeyValuePair<string, Vector2> door in doors)
-                {
-                    Rect2 neighbour = Rect2.Empty;
-                    bool found = false;
-                    foreach (Rect3 r in rooms.Values)
+                    float s = s0 * k;
+                    Vector2 t0 = mapCentroid - Orient(o, worldCentroid) * s;
+                    for (int dy = -6; dy <= 6; dy++)
                     {
-                        if (r.name == door.Key)
+                        for (int dx = -6; dx <= 6; dx++)
                         {
-                            Rect2 rr = r.To2D(u, v);
-                            if (!found || rr.Distance(room.Center) < neighbour.Distance(room.Center))
+                            var fit = new Fit { orientation = o, scale = s, offset = t0 + new Vector2(dx, dy) * map.cell };
+                            fit.iou = IoU(world, map, fit);
+                            fit.score = 1f - fit.iou;
+                            if (fit.score < orientBest.score)
                             {
-                                neighbour = rr;
-                                found = true;
+                                orientBest = fit;
                             }
                         }
                     }
-                    if (!found)
-                    {
-                        continue;
-                    }
-                    matchedDoors++;
-                    score += 3f * neighbour.Distance(fit.Apply(door.Value)) / Mathf.Max(diag, 1e-5f);
                 }
-                fit.score = score;
-                log.Append("\n    o").Append(o).Append(" score ").Append(score.ToString("0.000")).Append(" doors ").Append(matchedDoors);
-                if (score < best.score)
+                // Refine scale and offset around the best coarse candidate.
+                Fit coarse = orientBest;
+                for (int ks = -4; ks <= 4; ks++)
                 {
-                    best = fit;
+                    for (int dy = -2; dy <= 2; dy++)
+                    {
+                        for (int dx = -2; dx <= 2; dx++)
+                        {
+                            var fit = new Fit { orientation = o, scale = coarse.scale * (1f + ks * 0.01f), offset = coarse.offset + new Vector2(dx, dy) * map.cell * 0.5f };
+                            fit.iou = IoU(world, map, fit);
+                            fit.score = 1f - fit.iou;
+                            if (fit.score < orientBest.score)
+                            {
+                                orientBest = fit;
+                            }
+                        }
+                    }
+                }
+                orientBest.score += 0.1f * DoorPenalty(orientBest, doors, rooms, u, v, roomRect, diag);
+                log.Append("\n    o").Append(o).Append(" IoU ").Append(orientBest.iou.ToString("0.000")).Append(" score ").Append(orientBest.score.ToString("0.000"));
+                if (orientBest.score < best.score)
+                {
+                    best = orientBest;
                 }
             }
             return best;
+        }
+
+        private static float IoU(WorldMask world, MapMask map, Fit fit)
+        {
+            // Walk the map mask grid; map each cell centre back into the world mask.
+            Vector2 a = Orient(fit.orientation, Vector2.right);
+            Vector2 b = Orient(fit.orientation, Vector2.up);
+            float inv = 1f / fit.scale;
+            int inter = 0;
+            int worldInside = 0;
+            for (int y = 0; y < MaskRes; y++)
+            {
+                for (int x = 0; x < MaskRes; x++)
+                {
+                    Vector2 uv = map.CellCentre(x, y);
+                    Vector2 q = (uv - fit.offset) * inv;
+                    Vector2 w = new Vector2(Vector2.Dot(q, a), Vector2.Dot(q, b));
+                    bool inWorld = world.Get(w);
+                    if (inWorld)
+                    {
+                        worldInside++;
+                        if (map.mask[y * MaskRes + x])
+                        {
+                            inter++;
+                        }
+                    }
+                }
+            }
+            // World cells that land outside the map grid count against the fit too.
+            float worldCellsInMapUnits = world.count * world.cell * world.cell * fit.scale * fit.scale / (map.cell * map.cell);
+            float worldTotal = Mathf.Max(worldInside, worldCellsInMapUnits);
+            float union = map.count + worldTotal - inter;
+            return union > 0f ? inter / union : 0f;
+        }
+
+        private static float DoorPenalty(Fit fit, List<KeyValuePair<string, Vector2>> doors, List<RoomShape> rooms, int u, int v, Rect2 roomRect, float diag)
+        {
+            float total = 0f;
+            int n = 0;
+            foreach (KeyValuePair<string, Vector2> door in doors)
+            {
+                float bestDistance = float.MaxValue;
+                foreach (RoomShape r in rooms)
+                {
+                    if (r.name == door.Key)
+                    {
+                        bestDistance = Mathf.Min(bestDistance, r.To2D(u, v).Distance(fit.Apply(door.Value)));
+                    }
+                }
+                if (bestDistance < float.MaxValue)
+                {
+                    total += bestDistance / Mathf.Max(diag, 1e-5f);
+                    n++;
+                }
+            }
+            return n > 0 ? total / n : 0f;
         }
 
         // The 8 axis-aligned orientations: 4 rotations, each optionally mirrored.
@@ -305,6 +332,338 @@ namespace TSViewMod
                 case 2: return new Vector2(-p.x, -p.y);
                 case 3: return new Vector2(p.y, -p.x);
                 default: return p;
+            }
+        }
+
+        // ---------- world side: NavMesh rasterised on the XZ plane ----------
+
+        private class WorldMask
+        {
+            public Rect2 rect;
+            public float cell;
+            public int w;
+            public int h;
+            public bool[] mask;
+            public int count;
+
+            public bool Get(Vector2 p)
+            {
+                int x = Mathf.FloorToInt((p.x - rect.min.x) / cell);
+                int y = Mathf.FloorToInt((p.y - rect.min.y) / cell);
+                return x >= 0 && y >= 0 && x < w && y < h && mask[y * w + x];
+            }
+
+            public Vector2 Centroid()
+            {
+                Vector2 sum = Vector2.zero;
+                for (int y = 0; y < h; y++)
+                {
+                    for (int x = 0; x < w; x++)
+                    {
+                        if (mask[y * w + x])
+                        {
+                            sum += new Vector2(rect.min.x + (x + 0.5f) * cell, rect.min.y + (y + 0.5f) * cell);
+                        }
+                    }
+                }
+                return count > 0 ? sum / count : rect.Center;
+            }
+
+            public static WorldMask Build(StringBuilder log)
+            {
+                NavMeshTriangulation tri = NavMesh.CalculateTriangulation();
+                if (tri.vertices == null || tri.vertices.Length == 0 || tri.indices == null || tri.indices.Length < 3)
+                {
+                    log.Append(", no navmesh");
+                    return null;
+                }
+                Rect2 rect = Rect2.Empty;
+                foreach (Vector3 p in tri.vertices)
+                {
+                    rect.Add(new Vector2(p.x, p.z));
+                }
+                float cell = Mathf.Max(rect.Size.x, rect.Size.y) / 96f;
+                if (cell <= 0f)
+                {
+                    return null;
+                }
+                var m = new WorldMask { rect = rect, cell = cell };
+                m.w = Mathf.CeilToInt(rect.Size.x / cell) + 1;
+                m.h = Mathf.CeilToInt(rect.Size.y / cell) + 1;
+                m.mask = new bool[m.w * m.h];
+                for (int i = 0; i + 2 < tri.indices.Length; i += 3)
+                {
+                    Vector3 a = tri.vertices[tri.indices[i]];
+                    Vector3 b = tri.vertices[tri.indices[i + 1]];
+                    Vector3 c = tri.vertices[tri.indices[i + 2]];
+                    m.Fill(new Vector2(a.x, a.z), new Vector2(b.x, b.z), new Vector2(c.x, c.z));
+                }
+                foreach (bool on in m.mask)
+                {
+                    if (on)
+                    {
+                        m.count++;
+                    }
+                }
+                log.Append(", navmesh ").Append(rect).Append(' ').Append(m.count).Append(" cells");
+                return m.count > 0 ? m : null;
+            }
+
+            private void Fill(Vector2 a, Vector2 b, Vector2 c)
+            {
+                int x0 = Mathf.Max(0, Mathf.FloorToInt((Mathf.Min(a.x, Mathf.Min(b.x, c.x)) - rect.min.x) / cell));
+                int x1 = Mathf.Min(w - 1, Mathf.FloorToInt((Mathf.Max(a.x, Mathf.Max(b.x, c.x)) - rect.min.x) / cell));
+                int y0 = Mathf.Max(0, Mathf.FloorToInt((Mathf.Min(a.y, Mathf.Min(b.y, c.y)) - rect.min.y) / cell));
+                int y1 = Mathf.Min(h - 1, Mathf.FloorToInt((Mathf.Max(a.y, Mathf.Max(b.y, c.y)) - rect.min.y) / cell));
+                for (int y = y0; y <= y1; y++)
+                {
+                    for (int x = x0; x <= x1; x++)
+                    {
+                        Vector2 p = new Vector2(rect.min.x + (x + 0.5f) * cell, rect.min.y + (y + 0.5f) * cell);
+                        if (InTriangle(p, a, b, c))
+                        {
+                            mask[y * w + x] = true;
+                        }
+                    }
+                }
+            }
+
+            private static bool InTriangle(Vector2 p, Vector2 a, Vector2 b, Vector2 c)
+            {
+                float d1 = Cross(p, a, b);
+                float d2 = Cross(p, b, c);
+                float d3 = Cross(p, c, a);
+                bool neg = d1 < 0f || d2 < 0f || d3 < 0f;
+                bool pos = d1 > 0f || d2 > 0f || d3 > 0f;
+                return !(neg && pos);
+            }
+
+            private static float Cross(Vector2 p, Vector2 a, Vector2 b)
+            {
+                return (p.x - b.x) * (a.y - b.y) - (a.x - b.x) * (p.y - b.y);
+            }
+        }
+
+        // ---------- map side: highlight mesh drawn into a mask on the GPU ----------
+
+        private class MapMask
+        {
+            public Rect2 rect;
+            public float cell;
+            public bool[] mask;
+            public int count;
+
+            public Vector2 CellCentre(int x, int y)
+            {
+                return new Vector2(rect.min.x + (x + 0.5f) * cell, rect.min.y + (y + 0.5f) * cell);
+            }
+
+            public Vector2 Centroid()
+            {
+                Vector2 sum = Vector2.zero;
+                for (int y = 0; y < MaskRes; y++)
+                {
+                    for (int x = 0; x < MaskRes; x++)
+                    {
+                        if (mask[y * MaskRes + x])
+                        {
+                            sum += CellCentre(x, y);
+                        }
+                    }
+                }
+                return count > 0 ? sum / count : rect.Center;
+            }
+        }
+
+        private MapMask RenderMapMask(Transform map, RoomShape room, int u, int v, int n)
+        {
+            Rect2 r = room.To2D(u, v);
+            float side = Mathf.Max(r.Size.x, r.Size.y) * 1.3f;
+            if (side <= 0f)
+            {
+                return null;
+            }
+            Vector2 c = r.Center;
+            var square = new Rect2 { min = c - Vector2.one * side * 0.5f, max = c + Vector2.one * side * 0.5f };
+
+            MeshFilter filter = room.highlight.GetComponent<MeshFilter>();
+            if (filter == null || filter.sharedMesh == null)
+            {
+                return null;
+            }
+            bool[] mask = DrawMask(filter.sharedMesh, room.highlight.transform.localToWorldMatrix, map, square, u, v, n);
+            if (mask == null)
+            {
+                return null;
+            }
+            var result = new MapMask { rect = square, cell = side / MaskRes, mask = mask };
+            foreach (bool on in mask)
+            {
+                if (on)
+                {
+                    result.count++;
+                }
+            }
+            return result.count > 0 ? result : null;
+        }
+
+        // Draws a mesh with an orthographic view of the map plane and reads back which cells it covers.
+        // Row 0 of the result is the bottom of the square (lowest v).
+        private bool[] DrawMask(Mesh mesh, Matrix4x4 model, Transform map, Rect2 square, int u, int v, int n)
+        {
+            if (m_maskMaterial == null)
+            {
+                Shader shader = Shader.Find("Hidden/Internal-Colored");
+                if (shader == null)
+                {
+                    Loader.Log("map marker: no mask shader");
+                    return null;
+                }
+                m_maskMaterial = new Material(shader) { color = Color.white };
+                m_maskMaterial.SetInt("_Cull", 0);
+                m_maskMaterial.SetInt("_ZWrite", 0);
+                m_maskMaterial.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always);
+                m_maskMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.One);
+                m_maskMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.Zero);
+            }
+            // View = map-local axes (u, v, n) -> (x, y, z).
+            Matrix4x4 swizzle = Matrix4x4.zero;
+            swizzle[0, u] = 1f;
+            swizzle[1, v] = 1f;
+            swizzle[2, n] = 1f;
+            swizzle[3, 3] = 1f;
+            Matrix4x4 view = swizzle * map.worldToLocalMatrix;
+            Matrix4x4 proj = Matrix4x4.Ortho(square.min.x, square.max.x, square.min.y, square.max.y, -10000f, 10000f);
+
+            if (m_flipChecked == 0)
+            {
+                m_flipChecked = CheckRowOrder(view, proj, map, square, u, v, n);
+            }
+
+            Color32[] pixels = Draw(mesh, model, view, proj);
+            if (pixels == null)
+            {
+                return null;
+            }
+            var mask = new bool[MaskRes * MaskRes];
+            for (int y = 0; y < MaskRes; y++)
+            {
+                int srcRow = m_flipChecked < 0 ? MaskRes - 1 - y : y;
+                for (int x = 0; x < MaskRes; x++)
+                {
+                    Color32 p = pixels[srcRow * MaskRes + x];
+                    mask[y * MaskRes + x] = p.r > 127 || p.g > 127 || p.b > 127;
+                }
+            }
+            return mask;
+        }
+
+        private Color32[] Draw(Mesh mesh, Matrix4x4 model, Matrix4x4 view, Matrix4x4 proj)
+        {
+            RenderTexture rt = RenderTexture.GetTemporary(MaskRes, MaskRes, 0, RenderTextureFormat.ARGB32);
+            RenderTexture previous = RenderTexture.active;
+            var tex = new Texture2D(MaskRes, MaskRes, TextureFormat.RGBA32, false);
+            try
+            {
+                var cb = new UnityEngine.Rendering.CommandBuffer { name = "TSViewMod map mask" };
+                cb.SetRenderTarget(rt);
+                cb.ClearRenderTarget(true, true, Color.black);
+                cb.SetViewProjectionMatrices(view, proj);
+                for (int i = 0; i < mesh.subMeshCount; i++)
+                {
+                    cb.DrawMesh(mesh, model, m_maskMaterial, i, 0);
+                }
+                Graphics.ExecuteCommandBuffer(cb);
+                cb.Release();
+                RenderTexture.active = rt;
+                tex.ReadPixels(new Rect(0, 0, MaskRes, MaskRes), 0, 0, false);
+                return tex.GetPixels32();
+            }
+            finally
+            {
+                RenderTexture.active = previous;
+                RenderTexture.ReleaseTemporary(rt);
+                Destroy(tex);
+            }
+        }
+
+        // Draws a quad that covers only the bottom (low-v) quarter of the view and checks which rows lit up.
+        private int CheckRowOrder(Matrix4x4 view, Matrix4x4 proj, Transform map, Rect2 square, int u, int v, int n)
+        {
+            var mesh = new Mesh();
+            Vector3 Corner(float fu, float fv)
+            {
+                Vector3 local = Vector3.zero;
+                local[u] = Mathf.Lerp(square.min.x, square.max.x, fu);
+                local[v] = Mathf.Lerp(square.min.y, square.max.y, fv);
+                return map.TransformPoint(local);
+            }
+            mesh.vertices = new[] { Corner(0f, 0f), Corner(1f, 0f), Corner(1f, 0.25f), Corner(0f, 0.25f) };
+            mesh.triangles = new[] { 0, 1, 2, 0, 2, 3 };
+            Color32[] pixels = Draw(mesh, Matrix4x4.identity, view, proj);
+            Destroy(mesh);
+            if (pixels == null)
+            {
+                return 1;
+            }
+            int low = 0;
+            int high = 0;
+            for (int x = 0; x < MaskRes; x++)
+            {
+                if (pixels[2 * MaskRes + x].r > 127)
+                {
+                    low++;
+                }
+                if (pixels[(MaskRes - 3) * MaskRes + x].r > 127)
+                {
+                    high++;
+                }
+            }
+            int result = high > low ? -1 : 1;
+            Loader.Log("map marker: mask row check low " + low + " high " + high + " -> " + (result < 0 ? "flipped" : "normal"));
+            return result;
+        }
+
+        // ---------- shared helpers ----------
+
+        private struct Rect2
+        {
+            public Vector2 min;
+            public Vector2 max;
+            public Vector2 Size => max - min;
+            public Vector2 Center => (min + max) * 0.5f;
+
+            public static Rect2 Empty => new Rect2 { min = new Vector2(float.MaxValue, float.MaxValue), max = new Vector2(float.MinValue, float.MinValue) };
+
+            public void Add(Vector2 p)
+            {
+                min = Vector2.Min(min, p);
+                max = Vector2.Max(max, p);
+            }
+
+            public float Distance(Vector2 p)
+            {
+                float dx = Mathf.Max(min.x - p.x, 0f, p.x - max.x);
+                float dy = Mathf.Max(min.y - p.y, 0f, p.y - max.y);
+                return Mathf.Sqrt(dx * dx + dy * dy);
+            }
+
+            public override string ToString()
+            {
+                return "[" + min.x.ToString("0.00") + "," + min.y.ToString("0.00") + " .. " + max.x.ToString("0.00") + "," + max.y.ToString("0.00") + "]";
+            }
+        }
+
+        private class RoomShape
+        {
+            public string name;
+            public string tab;
+            public Bounds bounds;
+            public GameObject highlight;
+
+            public Rect2 To2D(int u, int v)
+            {
+                return new Rect2 { min = new Vector2(bounds.min[u], bounds.min[v]), max = new Vector2(bounds.max[u], bounds.max[v]) };
             }
         }
 
@@ -352,94 +711,23 @@ namespace TSViewMod
             return result;
         }
 
-        private struct Footprint
-        {
-            public Rect2 rect;
-            public string source;
-
-            public static Footprint Measure()
-            {
-                var nav = Rect2.Empty;
-                NavMeshTriangulation tri = NavMesh.CalculateTriangulation();
-                if (tri.vertices != null)
-                {
-                    foreach (Vector3 p in tri.vertices)
-                    {
-                        nav.Add(new Vector2(p.x, p.z));
-                    }
-                }
-                if (nav.IsValid)
-                {
-                    return new Footprint { rect = nav, source = "navmesh" };
-                }
-                // No navmesh in this room: use floor-like colliders around the player's feet.
-                var floor = Rect2.Empty;
-                PlayerController player = FindObjectOfType<PlayerController>();
-                float feet = player != null ? player.transform.position.y : 0f;
-                Scene active = SceneManager.GetActiveScene();
-                foreach (Collider c in FindObjectsOfType<Collider>())
-                {
-                    if (c.isTrigger || c.gameObject.scene != active || !c.enabled)
-                    {
-                        continue;
-                    }
-                    Bounds b = c.bounds;
-                    if (b.size.y > 1f || Mathf.Abs(b.max.y - feet) > 1f || b.size.x > 60f || b.size.z > 60f)
-                    {
-                        continue;
-                    }
-                    floor.Add(new Vector2(b.min.x, b.min.z));
-                    floor.Add(new Vector2(b.max.x, b.max.z));
-                }
-                return new Footprint { rect = floor, source = "floor colliders" };
-            }
-        }
-
-        private class Rect3
-        {
-            public string name;
-            public string tab;
-            public Bounds bounds;
-            public GameObject highlight;
-
-            public Rect2 To2D(int u, int v)
-            {
-                return new Rect2 { min = new Vector2(bounds.min[u], bounds.min[v]), max = new Vector2(bounds.max[u], bounds.max[v]) };
-            }
-        }
-
         // Highlight mesh bounds in the map's local space (mesh bounds work even when the mesh is not readable).
         private static bool TryLocalBounds(Transform map, GameObject highlight, out Bounds bounds)
         {
             bounds = default;
             MeshFilter filter = highlight.GetComponent<MeshFilter>();
-            Bounds meshBounds;
-            Transform space;
-            if (filter != null && filter.sharedMesh != null)
+            if (filter == null || filter.sharedMesh == null)
             {
-                meshBounds = filter.sharedMesh.bounds;
-                space = highlight.transform;
+                return false;
             }
-            else
-            {
-                Renderer r = highlight.GetComponent<Renderer>();
-                if (r == null)
-                {
-                    return false;
-                }
-                meshBounds = r.bounds;
-                space = null;
-            }
-            bool first = true;
+            Bounds meshBounds = filter.sharedMesh.bounds;
             for (int i = 0; i < 8; i++)
             {
                 Vector3 corner = meshBounds.center + Vector3.Scale(meshBounds.extents, new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
-                Vector3 world = space != null ? space.TransformPoint(corner) : corner;
-                Vector3 local = map.InverseTransformPoint(world);
-                if (first)
+                Vector3 local = map.InverseTransformPoint(highlight.transform.TransformPoint(corner));
+                if (i == 0)
                 {
                     bounds = new Bounds(local, Vector3.zero);
-                    first = false;
                 }
                 else
                 {
@@ -455,8 +743,7 @@ namespace TSViewMod
             dot.name = "TSViewMod_MapDot";
             Destroy(dot.GetComponent<Collider>());
             dot.layer = highlight.layer;
-            // Parent to the map rather than the highlight: the game hides highlights of other tabs, and
-            // the dot must follow the same visibility, so keep it under the highlight but positioned by us.
+            // Child of the highlight so it shows and hides with it when the map tab changes.
             dot.transform.SetParent(highlight.transform, worldPositionStays: true);
             Renderer renderer = dot.GetComponent<Renderer>();
             renderer.sharedMaterial = GetMaterial(highlight.GetComponent<Renderer>());

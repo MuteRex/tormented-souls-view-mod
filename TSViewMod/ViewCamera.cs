@@ -57,10 +57,18 @@ namespace TSViewMod
 
         private void Update()
         {
-            if (Input.GetKeyDown(m_config.CycleViewKey) || (m_config.ControllerR3CyclesView && RightStickClicked()))
+            // R3 is shared with the inspect reset, so it only cycles views during free play.
+            bool r3 = m_config.ControllerR3CyclesView && InFreePlay() && RightStickClicked();
+            if (Input.GetKeyDown(m_config.CycleViewKey) || r3)
             {
                 SetMode((ViewMode)(((int)m_mode + 1) % 3));
             }
+        }
+
+        private bool InFreePlay()
+        {
+            PlayerMovement movement = m_player != null ? m_player.GetPlayerMovement() : null;
+            return movement != null && !movement.GamePaused;
         }
 
         private void LateUpdate()
@@ -315,7 +323,7 @@ namespace TSViewMod
             return total;
         }
 
-        private static bool RightStickClicked()
+        public static bool RightStickClicked()
         {
             if (!ReInput.isReady)
             {

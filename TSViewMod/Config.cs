@@ -23,6 +23,8 @@ namespace TSViewMod
         public float FirstPersonFieldOfView = 70f;
         public bool HideBodyInFirstPerson = true;
         public bool MapMarker = true;
+        public bool InspectReset = true;
+        public KeyCode ResetRotationKey = KeyCode.R;
 
         public static string FilePath => Path.Combine(Application.dataPath, "TSViewMod.cfg");
 
@@ -64,6 +66,10 @@ namespace TSViewMod
                 config.FirstPersonFieldOfView = GetFloat(values, "FirstPersonFieldOfView", config.FirstPersonFieldOfView);
                 config.HideBodyInFirstPerson = GetBool(values, "HideBodyInFirstPerson", config.HideBodyInFirstPerson);
                 config.MapMarker = GetBool(values, "MapMarker", config.MapMarker);
+                config.InspectReset = GetBool(values, "InspectReset", config.InspectReset);
+                config.ResetRotationKey = GetKey(values, "ResetRotationKey", config.ResetRotationKey);
+                // Rewrite so settings added in newer versions appear in the file (values are kept).
+                config.Save();
             }
             catch (Exception e)
             {
@@ -96,6 +102,9 @@ namespace TSViewMod
                 "HideBodyInFirstPerson=" + HideBodyInFirstPerson,
                 "# Red dot on your current room in the map screen.",
                 "MapMarker=" + MapMarker,
+                "# While inspecting an item: this key, middle mouse or right-stick click resets its rotation.",
+                "InspectReset=" + InspectReset,
+                "ResetRotationKey=" + ResetRotationKey,
             });
         }
 

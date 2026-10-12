@@ -20,6 +20,7 @@ namespace TSViewMod
             Object.DontDestroyOnLoad(go);
             go.AddComponent<ViewCamera>();
             go.AddComponent<MapMarker>();
+            go.AddComponent<InspectReset>();
         }
 
         public static void Log(string message)

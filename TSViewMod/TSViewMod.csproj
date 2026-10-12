@@ -6,7 +6,7 @@
     <RootNamespace>TSViewMod</RootNamespace>
     <Nullable>disable</Nullable>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <GameManaged Condition="'$(GameManaged)' == ''">/mnt/media/Games/Tormented Souls/TormentedSouls_Data/Managed</GameManaged>
     <!-- Compile against the unpatched game code so the mod never depends on our debug patch. -->
     <OriginalAssemblyCSharp Condition="'$(OriginalAssemblyCSharp)' == ''">$(HOME)/Games-backups/TormentedSouls/Assembly-CSharp.dll.original</OriginalAssemblyCSharp>
