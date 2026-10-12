@@ -58,3 +58,11 @@ Goal: toggleable third-person / first-person camera + red "you are here" marker 
   Inspect reset: maps turn to face the Gui3DObject camera flat & upright (axes from the opening pose); other items
   go to m_initialRot. "[R]/[R3] Reset View" entry cloned into HelpersSwitcher's active bar (game scripts stripped,
   icons hidden); bar hierarchy dumped to log once.
+- v0.5.0 (user screenshot 01:50): Reset prompt rendered "[R] Reset View" squeezed into the keycap slot with the cloned
+  label still "Back". Bar entry layout (Examinate/BottomHelperBar): Background[Image+SwapSpriteControls] /
+  KeyboardText[TMP] / Label Text[TMP+MultilanguageUIAutotext]; SwapKeyboardControls on keyboard-style entries.
+  Game UI sprites available: analogL, analogR, bottom/rightButtonDiamond-medium, keyboardCapBlack, mouse icons;
+  NO stick-click (R3) art. Now: copy Back entry, keyboard = KeyboardBG keycap + key letter, pad = the Rotate
+  entry's current sprite (game-swapped analogR art), label "Reset View".
+  Map dot vanished after walking / after reset: dot was lifted toward Camera.main (gameplay cam), which can be behind
+  the sheet. Now lifted toward the camera whose cullingMask renders the highlight layer.

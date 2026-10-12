@@ -95,7 +95,6 @@ namespace TSViewMod
             {
                 m_player = FindObjectOfType<PlayerController>();
             }
-            Camera viewer = Camera.main;
             float pulse = 1f + 0.25f * Mathf.Sin(Time.unscaledTime * 6f);
             foreach (Marked marked in m_marked)
             {
@@ -121,13 +120,43 @@ namespace TSViewMod
                         local = marked.helper.transform.InverseTransformPoint(r != null ? r.bounds.center : room.highlight.transform.position);
                     }
                     Vector3 world = marked.helper.transform.TransformPoint(local);
-                    Vector3 toViewer = viewer != null ? (viewer.transform.position - world).normalized : Vector3.up;
+                    // Lift the dot toward the camera that renders the map (not the gameplay camera, which can
+                    // be on the far side of the sheet and would push the dot behind the paper).
+                    Camera viewer = MapCamera(room.highlight, world);
+                    Vector3 toViewer = viewer != null ? (viewer.transform.position - world).normalized : marked.helper.transform.up;
                     room.dot.position = world + toViewer * marked.dotSize * 0.6f;
                     float size = marked.dotSize * pulse;
                     Vector3 parentScale = room.dot.parent != null ? room.dot.parent.lossyScale : Vector3.one;
                     room.dot.localScale = new Vector3(size / Safe(parentScale.x), size / Safe(parentScale.y), size / Safe(parentScale.z));
                 }
             }
+        }
+
+        private Camera m_mapCamera;
+
+        private Camera MapCamera(GameObject highlight, Vector3 near)
+        {
+            int bit = 1 << highlight.layer;
+            if (m_mapCamera != null && m_mapCamera.isActiveAndEnabled && (m_mapCamera.cullingMask & bit) != 0)
+            {
+                return m_mapCamera;
+            }
+            m_mapCamera = null;
+            float best = float.MaxValue;
+            foreach (Camera c in Camera.allCameras)
+            {
+                if ((c.cullingMask & bit) == 0)
+                {
+                    continue;
+                }
+                float d = (c.transform.position - near).sqrMagnitude;
+                if (d < best)
+                {
+                    best = d;
+                    m_mapCamera = c;
+                }
+            }
+            return m_mapCamera;
         }
 
         private Marked Mark(MapHelperRoom helper, string scene)

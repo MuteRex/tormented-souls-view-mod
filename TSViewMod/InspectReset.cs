@@ -29,7 +29,6 @@ namespace TSViewMod
         private Quaternion m_target;
         private float m_nextSearch;
         private Gui3DObject m_viewer;
-        private readonly Dictionary<GameObject, GameObject> m_prompts = new Dictionary<GameObject, GameObject>();
         private bool m_loggedBar;
 
         private void Start()
@@ -150,6 +149,23 @@ namespace TSViewMod
         }
 
         // ---------- "Reset View" entry on the game's button bar ----------
+        // Each bar entry is: Background (icon Image), optional KeyboardText (key letter on a keycap), Label Text.
+        // We copy the bar's "Back" entry and drive it like the game drives its own: on keyboard a keycap with the
+        // key letter (SwapKeyboardControls.KeyboardBG), on a pad the game's right-stick icon taken from the
+        // "Rotate" entry, which the game already swaps between Xbox/PlayStation/Switch art.
+
+        private class Prompt
+        {
+            public GameObject root;
+            public Image icon;
+            public TMP_Text key;
+            public TMP_Text label;
+            public Sprite keyboardBackground;
+            public Image rotateIcon;
+            public SwapSpriteControls rotateSwap;
+        }
+
+        private readonly Dictionary<GameObject, Prompt> m_prompts = new Dictionary<GameObject, Prompt>();
 
         private void UpdatePrompt(bool show, Config config)
         {
@@ -164,41 +180,72 @@ namespace TSViewMod
                 {
                     continue;
                 }
-                m_prompts.TryGetValue(state, out GameObject prompt);
+                m_prompts.TryGetValue(state, out Prompt prompt);
                 bool want = show && state.activeInHierarchy;
                 if (want && prompt == null)
                 {
                     prompt = CreatePrompt(state);
                     m_prompts[state] = prompt;
                 }
-                if (prompt != null)
+                if (prompt == null || prompt.root == null)
                 {
-                    if (prompt.activeSelf != want)
-                    {
-                        prompt.SetActive(want);
-                    }
-                    if (want)
-                    {
-                        SetLabel(prompt, Label(config));
-                    }
+                    continue;
+                }
+                if (prompt.root.activeSelf != want)
+                {
+                    prompt.root.SetActive(want);
+                }
+                if (want)
+                {
+                    Refresh(prompt, config);
                 }
             }
         }
 
-        private static string Label(Config config)
+        private static void Refresh(Prompt prompt, Config config)
         {
-            bool pad = false;
-            try
+            bool pad = prompt.rotateIcon != null && prompt.rotateSwap != null && prompt.rotateIcon.sprite != null
+                && prompt.rotateIcon.sprite != prompt.rotateSwap.Mouse;
+            if (pad)
             {
-                pad = ReInput.isReady && ReInput.controllers.GetLastActiveControllerType() == ControllerType.Joystick;
+                SetSprite(prompt.icon, prompt.rotateIcon.sprite);
+                SetText(prompt.key, "");
             }
-            catch (System.Exception)
+            else
             {
+                SetSprite(prompt.icon, prompt.keyboardBackground);
+                SetText(prompt.key, KeyLabel(config.ResetRotationKey));
             }
-            return (pad ? "[R3]" : "[" + config.ResetRotationKey + "]") + " Reset View";
+            SetText(prompt.label, "Reset View");
         }
 
-        private GameObject CreatePrompt(GameObject state)
+        private static string KeyLabel(KeyCode key)
+        {
+            string name = key.ToString();
+            if (name.StartsWith("Alpha"))
+            {
+                return name.Substring(5);
+            }
+            return name.ToUpperInvariant();
+        }
+
+        private static void SetSprite(Image image, Sprite sprite)
+        {
+            if (image != null && sprite != null && image.sprite != sprite)
+            {
+                image.sprite = sprite;
+            }
+        }
+
+        private static void SetText(TMP_Text text, string value)
+        {
+            if (text != null && text.text != value)
+            {
+                text.text = value;
+            }
+        }
+
+        private Prompt CreatePrompt(GameObject state)
         {
             if (!m_loggedBar)
             {
@@ -207,73 +254,72 @@ namespace TSViewMod
                 Dump(state.transform, 0, sb);
                 Loader.Log(sb.ToString());
             }
-            // Clone the last visible entry that has a label, so the new prompt inherits the bar's font and layout.
-            // The bar is the outermost layout group holding two or more labelled entries (Rotate, Interact, Back...).
-            Transform template = null;
-            foreach (LayoutGroup group in state.GetComponentsInChildren<LayoutGroup>(false))
+            SwapKeyboardControls template = null;
+            SwapSpriteControls rotate = null;
+            foreach (SwapKeyboardControls entry in state.GetComponentsInChildren<SwapKeyboardControls>(false))
             {
-                Transform last = null;
-                int entries = 0;
-                foreach (Transform child in group.transform)
+                if (entry.name != PromptName)
                 {
-                    if (child.gameObject.activeInHierarchy && child.name != PromptName && HasLabel(child))
-                    {
-                        last = child;
-                        entries++;
-                    }
-                }
-                if (entries >= 2)
-                {
-                    template = last;
-                    break;
+                    template = entry;
                 }
             }
-            if (template == null)
+            foreach (SwapSpriteControls swap in state.GetComponentsInChildren<SwapSpriteControls>(false))
             {
-                Loader.Log("button bar: no prompt entry to copy in " + state.name);
+                if (swap.GetAction() == HintableMarks.Actions.Rotate)
+                {
+                    rotate = swap;
+                }
+            }
+            if (template == null || template.image == null || template.text == null)
+            {
+                Loader.Log("button bar: no keyboard-style entry to copy in " + state.name);
                 return null;
             }
-            GameObject prompt = Instantiate(template.gameObject, template.parent);
-            prompt.name = PromptName;
-            prompt.transform.SetAsLastSibling();
-            // Drop the game's own scripts (localisation, input icons) so they don't overwrite our label.
-            foreach (MonoBehaviour behaviour in prompt.GetComponentsInChildren<MonoBehaviour>(true))
+            GameObject copy = Instantiate(template.gameObject, template.transform.parent);
+            copy.name = PromptName;
+            copy.transform.SetAsLastSibling();
+            var prompt = new Prompt
+            {
+                root = copy,
+                keyboardBackground = template.KeyboardBG,
+                rotateSwap = rotate,
+                rotateIcon = rotate != null ? rotate.GetComponent<Image>() : null
+            };
+            // Find our copies of the template's icon and key text by matching child paths.
+            prompt.icon = FindCopy(template.transform, copy.transform, template.image.transform)?.GetComponent<Image>();
+            prompt.key = FindCopy(template.transform, copy.transform, template.text.transform)?.GetComponent<TMP_Text>();
+            foreach (TMP_Text text in copy.GetComponentsInChildren<TMP_Text>(true))
+            {
+                if (text != prompt.key)
+                {
+                    prompt.label = text;
+                }
+            }
+            // Drop the game's own scripts (localisation, icon swapping) so they don't overwrite ours.
+            foreach (MonoBehaviour behaviour in copy.GetComponentsInChildren<MonoBehaviour>(true))
             {
                 if (!(behaviour is Graphic) && !(behaviour is LayoutGroup) && !(behaviour is LayoutElement) && !(behaviour is ContentSizeFitter))
                 {
                     DestroyImmediate(behaviour);
                 }
             }
-            // The copied icon would show the wrong button, so hide icons and put the key in the label.
-            foreach (Image image in prompt.GetComponentsInChildren<Image>(true))
-            {
-                image.enabled = false;
-            }
-            Loader.Log("button bar: added Reset View prompt next to " + template.name + " in " + state.name);
+            Loader.Log("button bar: added Reset View prompt in " + state.name + (rotate != null ? " (pad icon from Rotate)" : " (keyboard icon only)"));
             return prompt;
         }
 
-        private static void SetLabel(GameObject prompt, string text)
+        private static Transform FindCopy(Transform originalRoot, Transform copyRoot, Transform original)
         {
-            TMP_Text tmp = prompt.GetComponentInChildren<TMP_Text>(true);
-            if (tmp != null)
+            var path = new List<int>();
+            for (Transform t = original; t != null && t != originalRoot; t = t.parent)
             {
-                if (tmp.text != text)
-                {
-                    tmp.text = text;
-                }
-                return;
+                path.Add(t.GetSiblingIndex());
             }
-            Text legacy = prompt.GetComponentInChildren<Text>(true);
-            if (legacy != null && legacy.text != text)
+            Transform result = copyRoot;
+            for (int i = path.Count - 1; i >= 0 && result != null; i--)
             {
-                legacy.text = text;
+                result = path[i] < result.childCount ? result.GetChild(path[i]) : null;
             }
-        }
-
-        private static bool HasLabel(Transform t)
-        {
-            return t.GetComponentInChildren<TMP_Text>(true) != null || t.GetComponentInChildren<Text>(true) != null;
+            return result;
         }
 
         private static void Dump(Transform t, int depth, StringBuilder sb)
