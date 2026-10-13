@@ -120,3 +120,14 @@ Offline room extraction: precompute world->map fits for every room so unvisited 
   SceneEntrancePoints + SceneDataSO.DoorConnector.
 - Same scoring as runtime (2.0 * door penalty + (1 - IoU)); write TSViewMod_mapcache.txt lines (CacheVersion 2,
   key scene|tab|highlightName) and a report of weak rooms. Runtime keeps working without it.
+
+## 2026-10-13 v1.0.2: map survey (option B)
+- Map item = single Addressable `Items/Map_Zoom.prefab` (Gui3DObject.SetItem: "Items/" + AddressableItemName), all tabs.
+- Survey.cs: flag file TSViewMod_survey.flag (deleted on read) -> InitMenuManager.ContinueSaved() -> load the map
+  prefab into a hidden DontDestroyOnLoad holder with all its MonoBehaviours disabled (MapHelperRoom.Update NREs without
+  the inspect screen's obsBase) -> GameplayEntranceManager.TeleportToSceneTesting(scene) for every scene in
+  sceneToGameObjects -> MapMarker marks/fits it as usual (pose voting skipped while Survey.Active) ->
+  TSViewMod_survey_report.txt, resume list TSViewMod_survey_done.txt, Application.Quit().
+- installer/survey.py: refuses if TormentedSouls.exe runs, installs, backs up Saves + pfx/user.reg (low-res window
+  persists via PlayerPrefs; enemy/door code can autosave), stops ts-save-backup.path, launches via Steam, renices,
+  restores everything after. Untested in game yet.

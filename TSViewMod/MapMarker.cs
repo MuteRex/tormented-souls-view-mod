@@ -64,6 +64,34 @@ namespace TSViewMod
         private Material m_maskMaterial;
         private PlayerController m_player;
         private int m_flipChecked; // 0 unknown, 1 normal, -1 rows flipped
+        private static MapMarker s_instance;
+
+        private void Awake()
+        {
+            s_instance = this;
+        }
+
+        // For Survey: true once the map has been marked in this scene and every room on it has its fit
+        // (from the cache or freshly computed). Lines describe each room; weak = no usable fit.
+        public static bool TryGetSceneResult(string scene, out List<string> lines, out bool weak)
+        {
+            lines = new List<string>();
+            weak = false;
+            Marked marked = s_instance != null ? s_instance.m_marked.Find(m => m.helper != null && m.scene == scene) : null;
+            if (marked == null || marked.rooms.Exists(r => !r.ready))
+            {
+                return false;
+            }
+            foreach (RoomDot room in marked.rooms)
+            {
+                bool roomWeak = !room.hasFit || room.fit.iou < 0.5f;
+                weak |= roomWeak;
+                lines.Add(room.key + (room.hasFit
+                    ? "  orientation " + room.fit.orientation + " scale " + room.fit.scale.ToString("0.0000") + " IoU " + room.fit.iou.ToString("0.00")
+                    : "  no fit (no navmesh or too weak), dot uses room centre") + (roomWeak ? "  << WEAK" : ""));
+            }
+            return true;
+        }
 
         private void Start()
         {
@@ -419,9 +447,9 @@ namespace TSViewMod
         // in-plane axis points up on screen. The dot and the inspect reset use this.
         private static void LearnFront(Marked marked)
         {
-            if (marked.voted || marked.helper == null)
+            if (marked.voted || marked.helper == null || Survey.Active)
             {
-                return;
+                return; // the survey's off-screen map has no meaningful pose
             }
             Transform sheet = marked.helper.transform;
             float age = Time.unscaledTime - marked.openedAt;

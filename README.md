@@ -50,6 +50,20 @@ marker and the inspect reset. Restart the game after editing it.
 
 Map fits are cached in `TormentedSouls_Data/TSViewMod_mapcache.txt`. Delete that file to recompute them.
 
+## Map survey (optional)
+
+Rooms are fitted the first time you open the map in them. To fit every room in advance, close the game and run:
+
+```sh
+python3 installer/survey.py
+```
+
+It backs up your saves and settings, then starts the game in a tiny muted window at low priority. The mod continues
+your save, teleports through every room on the map with the game's debug teleport, fits each one and quits by
+itself (about 5-10 minutes). Afterwards the launcher restores your saves and settings and prints
+`TSViewMod_survey_report.txt`. Rooms marked WEAK may have an inaccurate dot. If it's interrupted, run it again and it
+continues where it stopped.
+
 ## How it works (short)
 
 - **Camera:** a mod-owned Cinemachine virtual camera sits one priority above the game's main ClearShot camera.
