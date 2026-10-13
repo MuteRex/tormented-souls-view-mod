@@ -32,6 +32,7 @@ namespace TSViewMod
             public float normalCoord;
             public Vector2 rectMin;
             public Vector2 rectMax;
+            public MapMask shape;
         }
 
         private class Marked
@@ -134,9 +135,17 @@ namespace TSViewMod
                         Vector2 uv = room.fit.Apply(new Vector2(p.x, p.z));
                         // The player is in this room, so keep the dot inside the room's shape on the map
                         // (navmesh areas like stair landings can map slightly past the drawn outline).
-                        float margin = marked.dotSize * 0.3f;
-                        uv.x = Mathf.Clamp(uv.x, room.rectMin.x + margin, room.rectMax.x - margin);
-                        uv.y = Mathf.Clamp(uv.y, room.rectMin.y + margin, room.rectMax.y - margin);
+                        // Snap into the drawn shape (an L-shaped room's bounding box covers neighbouring rooms).
+                        if (room.shape != null)
+                        {
+                            uv = room.shape.Snap(uv);
+                        }
+                        else
+                        {
+                            float margin = marked.dotSize * 0.3f;
+                            uv.x = Mathf.Clamp(uv.x, room.rectMin.x + margin, room.rectMax.x - margin);
+                            uv.y = Mathf.Clamp(uv.y, room.rectMin.y + margin, room.rectMax.y - margin);
+                        }
                         local = Vector3.zero;
                         local[marked.uAxis] = uv.x;
                         local[marked.vAxis] = uv.y;
@@ -244,6 +253,8 @@ namespace TSViewMod
                     rectMax = roomRect.max
                 };
                 dot.dot = CreateDot(room.highlight);
+                // One small GPU draw + readback of the room's outline; used to keep the dot inside it.
+                dot.shape = RenderMapMask(helper.transform, room, marked.uAxis, marked.vAxis, marked.nAxis);
                 if (FitCache.TryGet(dot.key, out Fit cached))
                 {
                     dot.fit = cached;
@@ -280,7 +291,7 @@ namespace TSViewMod
             foreach (KeyValuePair<RoomShape, RoomDot> item in pending)
             {
                 RoomDot dot = item.Value;
-                MapMask mask = world != null && marked.helper != null ? RenderMapMask(marked.helper.transform, item.Key, marked.uAxis, marked.vAxis, marked.nAxis) : null;
+                MapMask mask = world != null && marked.helper != null ? dot.shape : null;
                 if (mask != null)
                 {
                     var result = new Fit[1];
@@ -756,6 +767,61 @@ namespace TSViewMod
             public Vector2 CellCentre(int x, int y)
             {
                 return new Vector2(rect.min.x + (x + 0.5f) * cell, rect.min.y + (y + 0.5f) * cell);
+            }
+
+            // p if it lies inside the drawn room, otherwise the nearest room cell, nudged toward the middle of
+            // its neighbourhood so the dot sits inside narrow strips rather than on their edge.
+            public Vector2 Snap(Vector2 p)
+            {
+                int cx = Mathf.FloorToInt((p.x - rect.min.x) / cell);
+                int cy = Mathf.FloorToInt((p.y - rect.min.y) / cell);
+                if (Get(cx, cy))
+                {
+                    return p;
+                }
+                int bx = -1;
+                int by = -1;
+                float bestDistance = float.MaxValue;
+                for (int y = 0; y < MaskRes; y++)
+                {
+                    for (int x = 0; x < MaskRes; x++)
+                    {
+                        if (!mask[y * MaskRes + x])
+                        {
+                            continue;
+                        }
+                        float d = (CellCentre(x, y) - p).sqrMagnitude;
+                        if (d < bestDistance)
+                        {
+                            bestDistance = d;
+                            bx = x;
+                            by = y;
+                        }
+                    }
+                }
+                if (bx < 0)
+                {
+                    return p;
+                }
+                Vector2 sum = Vector2.zero;
+                int n = 0;
+                for (int dy = -2; dy <= 2; dy++)
+                {
+                    for (int dx = -2; dx <= 2; dx++)
+                    {
+                        if (Get(bx + dx, by + dy))
+                        {
+                            sum += CellCentre(bx + dx, by + dy);
+                            n++;
+                        }
+                    }
+                }
+                return sum / n;
+            }
+
+            private bool Get(int x, int y)
+            {
+                return x >= 0 && y >= 0 && x < MaskRes && y < MaskRes && mask[y * MaskRes + x];
             }
 
             public Vector2 Centroid()

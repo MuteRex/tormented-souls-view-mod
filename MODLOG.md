@@ -77,3 +77,9 @@ Goal: toggleable third-person / first-person camera + red "you are here" marker 
   the map printed side toward the viewer, so ~0.35 s after open (rotation settled, or 1.5 s max) record which side of
   the sheet faces the map camera and which in-plane axis points up on screen. Dot hiding and the reset both use it;
   reset falls back to m_initialRot until learned. Logged as "learned printed side ...".
+- v0.8.0 (video 02-14-58, frame-by-frame): v0.7 confirmed working — learned printed side +1 / up axis 0+ on every
+  open; reset goes tilted -> flat upright printed side (10.5 s -> 12.5 s); dot correct on the ground floor of
+  East Wing Hall; prompt OK. Remaining bug: upstairs part of Corridor_1D (corridor with painting, reached by the
+  hall stairs) is drawn as the thin orange strip along the top of the L over Delivery Room; rect clamp parked the
+  dot on the rect's corner (Delivery Room). Now the room outline mask is rendered on every open (one 64x64 draw +
+  readback) and the dot snaps to the nearest outline cell, nudged toward its 5x5 neighbourhood centre.
