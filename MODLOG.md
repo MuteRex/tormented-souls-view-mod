@@ -181,3 +181,6 @@ Offline room extraction: precompute world->map fits for every room so unvisited 
 
 ## v1.2.0 (2026-10-13)
 User confirmed the mod is in a good, playable state (third-person camera, auto follow, options page, map dot, inspect reset). Known cosmetic: some enemy attack animations look odd from the third-person angle (they were authored for the fixed cameras).
+
+## v1.2.1 (2026-10-13)
+RE2-style turning (from the user's RE2 clip): the orbit limit now only stops the stick/mouse swinging the camera past it; her own turning no longer drags the camera round at 360 deg/s, so she can run toward the camera like Leon does. Auto follow still recentres on curves.

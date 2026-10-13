@@ -263,6 +263,24 @@ namespace TSViewMod
             {
                 m_lastLookInput = Time.unscaledTime;
             }
+            if (m_mode == ViewMode.ThirdPerson && m_config.OrbitLimit > 0f && m_config.OrbitLimit < 180f && m_player != null)
+            {
+                // RE2-style: the stick can't swing the camera more than OrbitLimit round from her back, but her
+                // own turning never drags the camera (she can run toward it, like in RE2).
+                float rel = Mathf.DeltaAngle(m_player.transform.eulerAngles.y, m_yaw);
+                float limit = m_config.OrbitLimit;
+                if (Mathf.Abs(rel) >= limit)
+                {
+                    if (Mathf.Sign(lookX) == Mathf.Sign(rel))
+                    {
+                        lookX = 0f;
+                    }
+                }
+                else if (Mathf.Abs(rel + lookX) > limit)
+                {
+                    lookX = Mathf.Sign(lookX) * limit - rel;
+                }
+            }
             m_yaw += lookX;
             m_pitch = m_mode == ViewMode.FirstPerson
                 ? Mathf.Clamp(m_pitch - lookY, -80f, 75f)
@@ -299,19 +317,6 @@ namespace TSViewMod
                 {
                     float rate = m_config.AutoFollowSpeed * Mathf.Clamp01(m_playerSpeed / 2f) * Mathf.Clamp(Mathf.Abs(rel) / 60f, 0.25f, 1.5f);
                     m_yaw = Mathf.MoveTowardsAngle(m_yaw, facing, rate * frameDt);
-                }
-            }
-            if (m_mode == ViewMode.ThirdPerson && m_config.OrbitLimit > 0f && m_config.OrbitLimit < 180f)
-            {
-                // Keep the camera within OrbitLimit of her back; when she turns past it, the camera follows round
-                // smoothly instead of snapping.
-                float facing = playerTransform.eulerAngles.y;
-                float rel = Mathf.DeltaAngle(facing, m_yaw);
-                float limit = m_config.OrbitLimit;
-                if (Mathf.Abs(rel) > limit)
-                {
-                    float target = facing + Mathf.Sign(rel) * limit;
-                    m_yaw = Mathf.MoveTowardsAngle(m_yaw, target, 360f * Time.unscaledDeltaTime);
                 }
             }
             Quaternion rotation = Quaternion.Euler(m_pitch, m_yaw, 0f);
