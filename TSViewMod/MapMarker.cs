@@ -9,13 +9,10 @@ using Debug = UnityEngine.Debug;
 
 namespace TSViewMod
 {
-    // The game's map (MapHelperRoom) only lights up the room you are in, with a faint white flicker.
-    // This tints that glow red and puts a pulsing red dot at the player's actual position.
-    //
-    // Every room is its own scene built around its own origin, so there is no global world->map transform.
-    // Per room we fit one by shape: the room's highlight mesh is drawn into a small mask on the GPU (the
-    // meshes are not CPU-readable), the room's NavMesh is rasterised into a world mask, and the 8 axis-aligned
-    // orientations x scale x offset are searched for the best overlap (IoU). Door spawn points break ties.
+    // Tints the map's current-room glow red and adds a red dot (with facing arrow) at the player's position.
+    // Rooms are separate scenes with no shared world->map transform, so each is fitted by shape: the highlight
+    // mesh is drawn into a mask on the GPU, the walkable area is rasterised, and 8 orientations x scale x offset are
+    // searched for the best IoU, with door spawn points breaking ties.
     public class MapMarker : MonoBehaviour
     {
         private static readonly Color MarkerRed = new Color(1f, 0.05f, 0.05f, 1f);
@@ -72,8 +69,7 @@ namespace TSViewMod
             s_instance = this;
         }
 
-        // For the camera: the room's walkable area (navmesh, or the floor probe where there's none), built once per
-        // scene a second after it loads. Unknown -> true, so the camera is never blocked by a missing mask.
+        // Walkable mask for the camera, built a second after each scene loads. Unknown -> true.
         private static WorldMask s_roomMask;
         private static string s_roomMaskScene;
         private static float s_roomMaskAt;
@@ -103,14 +99,12 @@ namespace TSViewMod
             return s_roomMask == null || s_roomMask.Near(new Vector2(p.x, p.z), overhang);
         }
 
-        // For Survey: whether this room's fit is already cached (so the survey can skip it).
         public static bool IsCached(string scene, string tab, string highlightName)
         {
             return FitCache.TryGetTrusted(scene + "|" + tab + "|" + highlightName, out Fit _);
         }
 
-        // For Survey: true once the map has been marked in this scene and every room on it has its fit
-        // (from the cache or freshly computed). Lines describe each room; weak = no usable fit.
+        // For Survey: true once every room on this scene's map has a fit (cached or new).
         public static bool TryGetSceneResult(string scene, out List<string> lines, out bool weak)
         {
             lines = new List<string>();
@@ -145,7 +139,6 @@ namespace TSViewMod
                 config.Save();
                 ViewCamera.Instance.ShowToast(config.MapMarker ? "Map marker: on" : "Map marker: off");
             }
-            // The config is the source of truth (the options page changes it too).
             if (config != null && m_enabled != config.MapMarker)
             {
                 m_enabled = config.MapMarker;
@@ -216,9 +209,7 @@ namespace TSViewMod
                         heading[marked.uAxis] = ahead.x;
                         heading[marked.vAxis] = ahead.y;
                         Vector2 rawUv = uv;
-                        // The player is in this room, so keep the dot inside the room's shape on the map
-                        // (navmesh areas like stair landings can map slightly past the drawn outline).
-                        // Snap into the drawn shape (an L-shaped room's bounding box covers neighbouring rooms).
+                        // Snap into the drawn shape (stair landings can map past the outline; L-shaped rooms' boxes overlap others).
                         if (room.shape != null)
                         {
                             uv = room.shape.Snap(uv);
@@ -250,10 +241,9 @@ namespace TSViewMod
                     }
                     Transform sheet = marked.helper.transform;
                     Vector3 world = sheet.TransformPoint(local);
-                    // Lift the dot off the printed side of the sheet (the side the room highlights sit on).
                     Vector3 front = sheet.TransformDirection(FrontNormalLocal(marked.nAxis, marked.frontSign)).normalized;
                     room.dot.position = world + front * marked.dotSize * 0.6f;
-                    // Drawn on top of everything, so hide it when the sheet is turned to its back.
+                    // Drawn on top, so hide it when the sheet's back faces the camera.
                     Camera viewer = MapCamera(room.highlight, world);
                     bool facing = !marked.frontKnown || viewer == null || Vector3.Dot(front, viewer.transform.position - world) > 0f;
                     Renderer dotRenderer = room.dot.GetComponent<Renderer>();
@@ -270,8 +260,7 @@ namespace TSViewMod
             }
         }
 
-        // RE2-style pointer on the dot showing which way she faces. A child of the dot, so it shows, hides and
-        // scales with it (the pulse is cancelled out).
+        // Facing pointer: child of the dot, with the dot's pulse cancelled out.
         private static Mesh s_arrowMesh;
 
         private void UpdateArrow(RoomDot room, Vector3 heading, Vector3 front, bool show, float pulse)
@@ -311,7 +300,6 @@ namespace TSViewMod
             room.arrow.localScale = new Vector3(size / Safe(dotScale.x), size / Safe(dotScale.y), size / Safe(dotScale.z));
         }
 
-        // Flat triangle pointing along +y, both sides drawn.
         private static Mesh ArrowMesh()
         {
             if (s_arrowMesh == null)
@@ -328,7 +316,7 @@ namespace TSViewMod
         private static readonly Color DoorBlue = new Color(0.1f, 0.45f, 1f, 1f);
         private Material m_doorMaterial;
 
-        // Debug: door spawn points mapped through the room's fit. On a correct fit each sits just inside its doorway.
+        // Debug: door spawn points through the fit; each should sit at its doorway.
         private void UpdateDoorDots(Marked marked, RoomDot room)
         {
             bool show = DebugTools.Enabled && m_enabled && room.ready && room.hasFit && room.doors != null;
@@ -376,7 +364,6 @@ namespace TSViewMod
                 local[marked.nAxis] = room.normalCoord;
                 Vector3 world = sheet.TransformPoint(local);
                 t.position = world + front * marked.dotSize * 0.6f;
-                // Same rule as the red dot: drawn on top, so hide it when the back of the sheet faces the camera.
                 Camera viewer = MapCamera(room.highlight, world);
                 bool facing = !marked.frontKnown || viewer == null || Vector3.Dot(front, viewer.transform.position - world) > 0f;
                 Renderer r = t.GetComponent<Renderer>();
@@ -450,7 +437,7 @@ namespace TSViewMod
             marked.poseKey = helper.gameObject.name + "|n" + marked.nAxis;
             if (PoseVotes.TryGetMajority(marked.poseKey, out float knownSign, out Vector3 knownUp))
             {
-                // Seen this map before: use the agreed pose straight away (this open still gets a vote).
+                // Known map: use the agreed pose straight away (this open still votes).
                 marked.frontSign = knownSign;
                 marked.upLocal = knownUp;
                 marked.frontKnown = true;
@@ -474,7 +461,7 @@ namespace TSViewMod
                     rectMax = roomRect.max
                 };
                 dot.dot = CreateDot(room.highlight);
-                // One small GPU draw + readback of the room's outline; used to keep the dot inside it.
+                // GPU draw of the room outline, used to keep the dot inside it.
                 dot.shape = RenderMapMask(helper.transform, room, marked.uAxis, marked.vAxis, marked.nAxis);
                 dot.doors = DoorPoints();
                 if (FitCache.TryGetTrusted(dot.key, out Fit cached))
@@ -501,7 +488,7 @@ namespace TSViewMod
             return marked;
         }
 
-        // Works out the world->map fit for rooms not in the cache, a few milliseconds per frame.
+        // Fits uncached rooms, a few milliseconds per frame.
         private IEnumerator FitRooms(Marked marked, List<RoomShape> rooms, List<KeyValuePair<RoomShape, RoomDot>> pending)
         {
             var clock = Stopwatch.StartNew();
@@ -547,9 +534,8 @@ namespace TSViewMod
 
         private static readonly Dictionary<MapHelperRoom, Marked> s_byHelper = new Dictionary<MapHelperRoom, Marked>();
 
-        // The game always opens the map printed side toward the viewer, upright. Once the opening animation has
-        // settled (and before the player has had time to spin it) record which side faces the map camera and which
-        // in-plane axis points up on screen. The dot and the inspect reset use this.
+        // The game opens the map printed side toward the viewer, upright: once settled, record which side and which
+        // axis is up. Used by the dot and the inspect reset.
         private static void LearnFront(Marked marked)
         {
             if (marked.voted || marked.helper == null || Survey.Active)
@@ -563,7 +549,7 @@ namespace TSViewMod
             float grew = (scale - marked.lastScale).magnitude / Mathf.Max(scale.magnitude, 1e-6f);
             marked.lastRotation = sheet.rotation;
             marked.lastScale = scale;
-            // Opening animations scale the item up from zero and swing it in; wait until both have stopped.
+            // Wait for the opening scale/swing animation to stop.
             bool settled = age > 0.35f && turned < 0.2f && grew < 0.002f && scale.magnitude > 1e-4f;
             if (!settled)
             {
@@ -603,7 +589,7 @@ namespace TSViewMod
                 + age.ToString("0.00") + " s; using majority " + marked.frontSign + " / " + marked.upLocal + " (" + PoseVotes.Describe(marked.poseKey) + ")");
         }
 
-        // Votes for each map's printed side / up axis, kept across sessions in TSViewMod_mappose.txt.
+        // Per-map votes for printed side / up axis, persisted in TSViewMod_mappose.txt.
         private static class PoseVotes
         {
             private static Dictionary<string, Dictionary<string, int>> s_votes;
@@ -726,7 +712,6 @@ namespace TSViewMod
             }
         }
 
-        // For the inspect reset: printed-side normal and screen-up axis in the sheet's local space, once learned.
         public static bool TryGetSheetPose(MapHelperRoom helper, out Vector3 faceLocal, out Vector3 upLocal)
         {
             faceLocal = Vector3.zero;
@@ -780,7 +765,7 @@ namespace TSViewMod
             }
         }
 
-        // Fits never change for a room, so they are kept in TormentedSouls_Data/TSViewMod_mapcache.txt.
+        // Cached in TSViewMod_mapcache.txt; fits never change.
         private static class FitCache
         {
             private static Dictionary<string, Fit> s_fits;
@@ -799,8 +784,7 @@ namespace TSViewMod
                 s_fits[key] = fit;
             }
 
-            // The whole building is drawn the same way round on every sheet, so once most fits agree on an
-            // orientation, that's the expected one (-1 = not enough evidence yet).
+            // The building is drawn the same way round on every sheet: the majority orientation (-1 = too few fits).
             public static int MajorityOrientation()
             {
                 Load();
@@ -825,8 +809,7 @@ namespace TSViewMod
                 return total >= 5 && counts[best] >= total * 0.6f ? best : -1;
             }
 
-            // A cached fit facing a different way than the rest is most likely mirrored/rotated: drop it so the room
-            // is refitted with the orientation preference.
+            // An off-majority fit is likely mirrored: drop it so the room is refitted with the prior.
             public static bool TryGetTrusted(string key, out Fit fit)
             {
                 if (!TryGet(key, out fit))
@@ -905,10 +888,9 @@ namespace TSViewMod
         // Bump when the fitting method changes so old entries are recomputed.
         private const string CacheVersion = "2";
 
-        // Survey runs at 10 fps with nobody playing, so it can spend far longer per frame.
         private static long FrameBudgetMs => Survey.Active ? 80 : 4;
 
-        // Added to the score of orientations other than the one most rooms use (see MajorityOrientation).
+        // Score penalty for orientations other than the majority one.
         private const float OrientationPenalty = 0.15f;
 
         private static IEnumerator FitShape(WorldMask world, MapMask map, List<KeyValuePair<string, Vector2>> doors, List<RoomShape> rooms, int u, int v, StringBuilder log, Fit[] result)
@@ -976,8 +958,7 @@ namespace TSViewMod
                         slice.Restart();
                     }
                 }
-                // Doors decide between mirror/rotation candidates whose shapes overlap about equally: each door's
-                // spawn point must land next to the room it leads to. Shape overlap only breaks remaining ties.
+                // Doors decide between equally overlapping mirror/rotation candidates; shape overlap breaks remaining ties.
                 float doorPenalty = DoorPenalty(orientBest, doors, rooms, u, v, roomRect, diag);
                 orientBest.score = DoorWeight * doorPenalty + (1f - orientBest.iou) + (expected >= 0 && o != expected ? OrientationPenalty : 0f);
                 log.Append("\n    o").Append(o).Append(" IoU ").Append(orientBest.iou.ToString("0.000"))
@@ -993,7 +974,6 @@ namespace TSViewMod
 
         private static float IoU(WorldMask world, MapMask map, Fit fit, int step)
         {
-            // Walk the map mask grid; map each cell centre back into the world mask.
             Vector2 a = Orient(fit.orientation, Vector2.right);
             Vector2 b = Orient(fit.orientation, Vector2.up);
             float inv = 1f / fit.scale;
@@ -1021,7 +1001,6 @@ namespace TSViewMod
                     }
                 }
             }
-            // World cells that land outside the map grid count against the fit too.
             float sampleCell = map.cell * step;
             float worldCells = world.count * world.cell * world.cell * fit.scale * fit.scale / (sampleCell * sampleCell);
             float union = mapInside + Mathf.Max(worldInside, worldCells) - inter;
@@ -1053,7 +1032,7 @@ namespace TSViewMod
             return n > 0 ? total / n : 0f;
         }
 
-        // The 8 axis-aligned orientations: 4 rotations, each optionally mirrored.
+        // 4 rotations, each optionally mirrored.
         private static Vector2 Orient(int o, Vector2 p)
         {
             if (o >= 4)
@@ -1080,7 +1059,6 @@ namespace TSViewMod
             public bool[] mask;
             public int count;
 
-            // True if any cell within `radius` metres of p is walkable (lets the camera overhang the walkable edge).
             public bool Near(Vector2 p, float radius)
             {
                 int r = Mathf.CeilToInt(radius / cell);
@@ -1162,13 +1140,11 @@ namespace TSViewMod
                 return m.count > 0 ? m : null;
             }
 
-            // Rooms without a navmesh (no enemies): probe the floor with physics instead. A cell counts when a ray
-            // from chest height lands on a flat surface near the player's floor level with standing room above it,
-            // and it's connected to where the player stands (drops furniture tops, walls and outside areas).
+            // No navmesh: probe the floor with rays from chest height (flat, near floor level, headroom), flood-filled from
+            // the player.
             private static WorldMask BuildFromFloor(StringBuilder log)
             {
-                // Strict first; some rooms have big solid helper volumes that block every headroom check, so retry
-                // with only the floor-height test (walls then count as thin floor strips, fine for fitting).
+                // Strict first; retry with the floor-height test only (some rooms have solid helper volumes).
                 return BuildFromFloor(log, true) ?? BuildFromFloor(log, false);
             }
 
@@ -1220,7 +1196,6 @@ namespace TSViewMod
                         floor[y * m.w + x] = !strict || !Physics.CheckCapsule(hit.point + Vector3.up * 0.45f, hit.point + Vector3.up * 1.4f, 0.12f, ~0, noTriggers);
                     }
                 }
-                // Flood fill from the floor cell nearest the player.
                 int start = -1;
                 float best = float.MaxValue;
                 for (int i = 0; i < floor.Length; i++)
@@ -1318,8 +1293,7 @@ namespace TSViewMod
                 return new Vector2(rect.min.x + (x + 0.5f) * cell, rect.min.y + (y + 0.5f) * cell);
             }
 
-            // p if it lies inside the drawn room, otherwise the nearest room cell, nudged toward the middle of
-            // its neighbourhood so the dot sits inside narrow strips rather than on their edge.
+            // p if inside the drawn room, else the nearest room cell nudged toward its neighbourhood's middle.
             public Vector2 Snap(Vector2 p)
             {
                 int cx = Mathf.FloorToInt((p.x - rect.min.x) / cell);
@@ -1422,8 +1396,7 @@ namespace TSViewMod
             return result.count > 0 ? result : null;
         }
 
-        // Draws a mesh with an orthographic view of the map plane and reads back which cells it covers.
-        // Row 0 of the result is the bottom of the square (lowest v).
+        // Orthographic draw of a mesh onto the map plane, read back as a mask (row 0 = lowest v).
         private bool[] DrawMask(Mesh mesh, Matrix4x4 model, Transform map, Rect2 square, int u, int v, int n)
         {
             if (m_maskMaterial == null)
@@ -1441,14 +1414,12 @@ namespace TSViewMod
                 m_maskMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.One);
                 m_maskMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.Zero);
             }
-            // View = map-local axes (u, v, n) -> (x, y, z).
             Matrix4x4 swizzle = Matrix4x4.zero;
             swizzle[0, u] = 1f;
             swizzle[1, v] = 1f;
             swizzle[2, n] = 1f;
             swizzle[3, 3] = 1f;
-            // The mesh is given in the map's local space (RelativeMatrix), so "world" here is map-local and the
-            // result doesn't depend on the opening animation's scale or the sheet's current rotation.
+            // Mesh in map-local space, so the result ignores the opening animation's scale and the sheet's rotation.
             Matrix4x4 view = swizzle;
             Matrix4x4 proj = Matrix4x4.Ortho(square.min.x, square.max.x, square.min.y, square.max.y, -10000f, 10000f);
 
@@ -1584,7 +1555,6 @@ namespace TSViewMod
             }
         }
 
-        // Door spawn points of the current scene, keyed by the scene each door leads to.
         private static List<KeyValuePair<string, Vector2>> DoorPoints()
         {
             var result = new List<KeyValuePair<string, Vector2>>();
@@ -1628,9 +1598,7 @@ namespace TSViewMod
             return result;
         }
 
-        // Highlight mesh bounds in the map's local space (mesh bounds work even when the mesh is not readable).
-        // highlight -> map transform built from local TRS only, so it stays valid while the map's parent is scaled
-        // to zero by the game's opening animation (world-space round trips would divide by zero there).
+        // Local-TRS-only transform: valid while the opening animation scales the parent to zero.
         public static Matrix4x4 RelativeMatrix(Transform root, Transform t)
         {
             Matrix4x4 m = Matrix4x4.identity;
@@ -1674,7 +1642,7 @@ namespace TSViewMod
             dot.name = "TSViewMod_MapDot";
             Destroy(dot.GetComponent<Collider>());
             dot.layer = highlight.layer;
-            // Child of the highlight so it shows and hides with it when the map tab changes.
+            // Child of the highlight so it follows map tab changes.
             dot.transform.SetParent(highlight.transform, worldPositionStays: true);
             Renderer renderer = dot.GetComponent<Renderer>();
             renderer.sharedMaterial = GetMaterial(highlight.GetComponent<Renderer>());
@@ -1722,7 +1690,6 @@ namespace TSViewMod
             Shader shader = Shader.Find("Hidden/Internal-Colored");
             if (shader != null)
             {
-                // Always on top: the sheet's folds and paper layers can't swallow the dot.
                 m_material = new Material(shader) { color = MarkerRed, renderQueue = 4000 };
                 m_material.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always);
                 m_material.SetInt("_ZWrite", 0);

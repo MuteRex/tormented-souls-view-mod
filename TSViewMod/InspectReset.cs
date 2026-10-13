@@ -8,11 +8,8 @@ using UnityEngine.UI;
 
 namespace TSViewMod
 {
-    // RE2-style "reset view" while inspecting an item: R / middle mouse / right-stick click smoothly turns
-    // the inspected object back to the rotation it opened with. Maps instead turn to face the viewer flat,
-    // so the whole sheet is readable. A "Reset View" prompt is added to the game's button bar.
-    // Gui3DObject keeps the opening rotation in m_initialRot and rotates m_toRotateObject in its LateUpdate,
-    // so this runs after it.
+    // RE2-style Reset View while inspecting: turns the item back to its opening rotation (maps lie flat, facing
+    // you) and adds a prompt to the button bar. Runs after Gui3DObject's LateUpdate.
     [DefaultExecutionOrder(1000)]
     public class InspectReset : MonoBehaviour
     {
@@ -87,8 +84,7 @@ namespace TSViewMod
             }
         }
 
-        // Rotation for the pivot that turns the map's printed side flat toward the camera, upright — the pose the
-        // game opened it in (learned by MapMarker), minus any tilt.
+        // Map pivot rotation with the printed side flat toward the camera, upright.
         private static Quaternion FaceViewer(Transform pivot, Quaternion initial, MapHelperRoom map, Transform camera)
         {
             Transform sheet = map.transform;
@@ -109,7 +105,6 @@ namespace TSViewMod
             return i == 0 ? t.right : i == 1 ? t.up : t.forward;
         }
 
-        // The inspection viewer that currently shows a loaded, rotatable item, if any.
         public Gui3DObject ActiveViewer()
         {
             if (m_viewer == null && Time.unscaledTime >= m_nextSearch)
@@ -126,11 +121,8 @@ namespace TSViewMod
             return hasItem && rotatable ? m_viewer : null;
         }
 
-        // ---------- "Reset View" entry on the game's button bar ----------
-        // Each bar entry is: Background (icon Image), optional KeyboardText (key letter on a keycap), Label Text.
-        // We copy the bar's "Back" entry and drive it like the game drives its own: on keyboard a keycap with the
-        // key letter (SwapKeyboardControls.KeyboardBG), on a pad the game's right-stick icon taken from the
-        // "Rotate" entry, which the game already swaps between Xbox/PlayStation/Switch art.
+        // ---------- "Reset View" entry on the button bar ----------
+        // A copy of the bar's Back entry: a keycap on keyboard, the game's right-stick icon (from Rotate) on a pad.
 
         private class Prompt
         {
@@ -192,8 +184,7 @@ namespace TSViewMod
                 SetSprite(prompt.icon, prompt.rotateIcon.sprite);
                 SetText(prompt.key, "");
                 SetActive(prompt.pressArrow, true);
-                // The bar clips anything above its row, so shrink the stick icon and drop it a little to make room
-                // for the arrow inside the icon's own space.
+                // The bar clips above its row: shrink the icon to fit the arrow.
                 SetIconLayout(prompt, 0.74f);
             }
             else
@@ -230,8 +221,7 @@ namespace TSViewMod
             }
         }
 
-        // The game has no "click the stick" icon, so the right-stick icon gets a small arrow pressing down on it,
-        // tinted like the bar's text.
+        // The game has no stick-click icon, so draw a press-down arrow on the right-stick icon.
         private static Sprite s_arrowSprite;
 
         private static Image CreatePressArrow(Image icon, Color color)
@@ -249,7 +239,6 @@ namespace TSViewMod
                 {
                     for (int x = 0; x < size; x++)
                     {
-                        // Downward chevron: stem on top, triangle head below (row 0 = bottom).
                         float cx = Mathf.Abs(x + 0.5f - size * 0.5f);
                         bool stem = y >= size * 0.55f && cx <= size * 0.11f;
                         bool head = y < size * 0.55f && cx <= (y + 0.5f) * 0.9f;
@@ -267,7 +256,6 @@ namespace TSViewMod
             rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 1f);
             rect.pivot = new Vector2(0.5f, 0f);
             float iconHeight = icon.rectTransform.rect.height > 1f ? icon.rectTransform.rect.height : 40f;
-            // Sits on top of the (shrunk) icon, inside the space the full-size icon had.
             rect.anchoredPosition = new Vector2(0f, -0.04f * iconHeight);
             float side = iconHeight * 0.36f;
             rect.sizeDelta = new Vector2(side, side);
@@ -346,7 +334,6 @@ namespace TSViewMod
                 rotateSwap = rotate,
                 rotateIcon = rotate != null ? rotate.GetComponent<Image>() : null
             };
-            // Find our copies of the template's icon and key text by matching child paths.
             prompt.icon = FindCopy(template.transform, copy.transform, template.image.transform)?.GetComponent<Image>();
             prompt.key = FindCopy(template.transform, copy.transform, template.text.transform)?.GetComponent<TMP_Text>();
             foreach (TMP_Text text in copy.GetComponentsInChildren<TMP_Text>(true))
@@ -356,7 +343,7 @@ namespace TSViewMod
                     prompt.label = text;
                 }
             }
-            // Drop the game's own scripts (localisation, icon swapping) so they don't overwrite ours.
+            // Drop the game's localisation and icon-swap scripts so they don't overwrite ours.
             foreach (MonoBehaviour behaviour in copy.GetComponentsInChildren<MonoBehaviour>(true))
             {
                 if (!(behaviour is Graphic) && !(behaviour is LayoutGroup) && !(behaviour is LayoutElement) && !(behaviour is ContentSizeFitter))

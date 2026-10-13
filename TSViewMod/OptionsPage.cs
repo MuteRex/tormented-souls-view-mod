@@ -9,10 +9,8 @@ using UnityEngine.UI;
 
 namespace TSViewMod
 {
-    // Adds a "View Mod" category to the game's Options menu, built from copies of the game's own category button and
-    // option rows, so it looks and navigates like the real settings (controller d-pad / stick, mouse +/-).
-    // Nothing is added to OptionsMenuController.panelsData; the mod wires the copy itself through the controller's
-    // private methods, and inserts the button into its private nav list before the Back button.
+    // Adds a "View Mod" category to Options, cloned from the game's own button and rows so it looks and navigates
+    // natively. Wired through the controller's private methods and nav list (not panelsData).
     public class OptionsPage : MonoBehaviour
     {
         private class Injected
@@ -67,7 +65,7 @@ namespace TSViewMod
             {
                 return null;
             }
-            // Template panel: the one with the most ◀ value ▶ rows.
+            // Template: the panel with the most rows.
             OptionMenuPanelData template = null;
             int most = 0;
             foreach (OptionMenuPanelData data in panels)
@@ -143,7 +141,7 @@ namespace TSViewMod
             return injected;
         }
 
-        // The controller's own nav list is built once from panelsData + Back; slot ours in before Back.
+        // Insert our nav item before Back.
         private static void EnsureNav(Injected injected)
         {
             var list = typeof(OptionsMenuController).GetField("NavMenuItems", Any)?.GetValue(injected.controller) as List<INavItem>;
@@ -155,7 +153,7 @@ namespace TSViewMod
             list.Insert(back >= 0 ? back : list.Count, injected.button.navButton);
         }
 
-        // Where the template panel sits when open (its InitialSetup parks it 2900 px to the right).
+        // Open position of the template (InitialSetup parks panels 2900 px right).
         private static Vector3 PanelHome(BaseMenuPanelController template)
         {
             FieldInfo initPos = typeof(BaseMenuPanelController).GetField("initPos", Any);
@@ -224,7 +222,6 @@ namespace TSViewMod
         }
     }
 
-    // The View Mod settings page. Rows are copies of the template panel's first ◀ value ▶ row.
     public class ViewModPanel : BaseMenuPanelController
     {
         private class Row
@@ -250,13 +247,12 @@ namespace TSViewMod
                 ? Mathf.Abs(existing[0].transform.localPosition.y - existing[1].transform.localPosition.y)
                 : ((RectTransform)first.transform).rect.height * 1.15f;
 
-            // Remove every other interactive item copied from the template (other rows, buttons, sliders).
+            // Remove the template's other rows and buttons.
             foreach (NavItemButton nav in GetComponentsInChildren<NavItemButton>(true))
             {
                 if (nav != null && !nav.transform.IsChildOf(first.transform) && !first.transform.IsChildOf(nav.transform))
                 {
                     Transform item = nav.transform;
-                    // Remove the whole row/button object, not just its nav child.
                     while (item.parent != null && item.parent != first.transform.parent && item.parent != transform)
                     {
                         item = item.parent;
@@ -267,7 +263,7 @@ namespace TSViewMod
                     }
                 }
             }
-            // A single text outside the rows is the page title; several are left alone (see the log dump).
+            // A single text outside the rows is the page title.
             var loose = new List<TMP_Text>();
             foreach (TMP_Text text in GetComponentsInChildren<TMP_Text>(true))
             {
@@ -290,7 +286,7 @@ namespace TSViewMod
         {
             var defs = new List<KeyValuePair<string, Row>>
             {
-                // First person is listed but not selectable yet: landing on it shows "Coming Soon" and keeps the camera.
+                // First person shows "Coming Soon" and keeps the current camera.
                 Def("Camera", () => s_comingSoon ? "First Person (Coming Soon)" : ModeName(ViewCamera.Instance.Mode), d =>
                 {
                     ViewMode current = s_comingSoon ? ViewMode.FirstPerson : ViewCamera.Instance.Mode;
@@ -302,14 +298,14 @@ namespace TSViewMod
                         Cfg.StartView = mode.ToString();
                     }
                 }),
-                // Same short-label style and density as the game's own pages; rarer settings stay in TSViewMod.cfg.
+                // Rarer settings stay in TSViewMod.cfg.
                 Def("Distance", () => Level(Cfg.ThirdPersonDistance, 0.8f, 0.2f), d => Cfg.ThirdPersonDistance = Step(Cfg.ThirdPersonDistance, d, 0.2f, 0.8f, 2.6f)),
                 Def("Height", () => Level(Cfg.PivotHeight, 1.15f, 0.1f), d => Cfg.PivotHeight = Step(Cfg.PivotHeight, d, 0.1f, 1.15f, 1.95f)),
                 Def("Shoulder", () => Cycle(new[] { "Auto", "Right", "Left" }, Cfg.ShoulderSide, 0), d => Cfg.ShoulderSide = Cycle(new[] { "Auto", "Right", "Left" }, Cfg.ShoulderSide, d)),
                 Def("Field of View", () => Cfg.FieldOfView.ToString("0", Inv), d => Cfg.FieldOfView = Step(Cfg.FieldOfView, d, 5f, 45f, 90f)),
                 Def("Stick Speed", () => Level(Cfg.StickSensitivity, 40f, 40f), d => Cfg.StickSensitivity = Step(Cfg.StickSensitivity, d, 40f, 40f, 400f)),
                 Def("Mouse Speed", () => Level(Cfg.MouseSensitivity, 0.5f, 0.5f), d => Cfg.MouseSensitivity = Step(Cfg.MouseSensitivity, d, 0.5f, 0.5f, 5f)),
-                // One row for both devices keeps the page at the game's 10-row density.
+                // One row for both devices keeps the game's 10-row density.
                 Def("Invert Y", () => InvertLabel(), d =>
                 {
                     int i = ((Cfg.InvertY ? 1 : 0) + (Cfg.MouseInvertY ? 2 : 0) + (d == 0 ? 1 : d) + 4) % 4;
@@ -327,7 +323,7 @@ namespace TSViewMod
                 control.transform.localPosition = top + Vector3.down * spacing * i;
                 Row row = defs[i].Value;
                 row.control = control;
-                // Label = the row's text that isn't the value and isn't part of the ◀ ▶ buttons.
+                // Label = the row's text outside the value and the arrow buttons.
                 foreach (TMP_Text text in control.GetComponentsInChildren<TMP_Text>(true))
                 {
                     if (text != control.selectorText && !Inside(text, control.Button_Minus) && !Inside(text, control.Button_Plus) && !Inside(text, control.Button_Center))
@@ -356,7 +352,7 @@ namespace TSViewMod
             return parent != null && child.transform.IsChildOf(parent.transform);
         }
 
-        // Settings shown as 1..10 steps like the game's own sliders, rather than metres/raw numbers.
+        // Shown as 1..10 steps like the game's own sliders.
         private static string InvertLabel()
         {
             return Cfg.InvertY ? (Cfg.MouseInvertY ? "Both" : "Stick") : (Cfg.MouseInvertY ? "Mouse" : "Off");

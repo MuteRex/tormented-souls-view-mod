@@ -92,7 +92,7 @@ namespace TSViewMod
                 config.ResetRotationMouseButton = (int)GetFloat(values, "ResetRotationMouseButton", config.ResetRotationMouseButton);
                 config.DebugOverlayKey = GetKey(values, "DebugOverlayKey", config.DebugOverlayKey);
                 config.SnapshotKey = GetKey(values, "SnapshotKey", config.SnapshotKey);
-                // Rewrite so settings added in newer versions appear in the file (values are kept).
+                // Rewrite so newly added settings appear in the file.
                 config.Save();
             }
             catch (Exception e)

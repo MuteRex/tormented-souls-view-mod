@@ -2,8 +2,7 @@ using UnityEngine;
 
 namespace TSViewMod
 {
-    // Entry point. Unity calls Init because installer/install.py lists it in
-    // RuntimeInitializeOnLoads.json (loadTypes 0 = after the first scene loads).
+    // Entry point: install.py registers Init in RuntimeInitializeOnLoads.json.
     public static class Loader
     {
         private static bool s_initialized;

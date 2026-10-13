@@ -193,3 +193,6 @@ User confirmed mouse support (v1.2.2). Keyboard: the game maps movement keys to 
 
 ## v1.3.1 (2026-10-13)
 Game camera takes over while the player animator has Grabbed/Dead set (or is in the Grabbed state) + 0.8 s, then the mod view snaps back behind her (GameCameraOnGrab). Map: red dot gets a facing pointer (flat double-sided triangle, child of the dot, direction = fit.Apply(p+forward)-fit.Apply(p) in sheet space; MapArrow). Door camera-carry idea dropped: rooms load behind a loading screen anyway.
+
+## v1.3.2 (2026-10-13)
+Public release prep: Linux only (Windows in progress), no trailer. Comments condensed. Installer finds the DLL next to itself (release zip) or in bin/, takes --game, and copies the bundled map fits (data/TSViewMod_mapcache.txt) if the player has none. csproj falls back to the installed Assembly-CSharp.dll.

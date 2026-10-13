@@ -7,8 +7,7 @@ using UnityEngine.SceneManagement;
 
 namespace TSViewMod
 {
-    // F8: on-screen readout of what the mod sees (scene, position, camera, map fit) and blue door markers on the map.
-    // F9: writes a screenshot + the same state as text to <game>/TSViewMod_debug/ so a session can be reviewed later.
+    // F8: on-screen state readout and door markers on the map. F9: screenshot + state dump to TSViewMod_debug/.
     public class DebugTools : MonoBehaviour
     {
         public static bool Enabled { get; private set; }

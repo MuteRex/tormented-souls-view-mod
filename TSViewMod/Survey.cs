@@ -9,10 +9,8 @@ using UnityEngine.SceneManagement;
 
 namespace TSViewMod
 {
-    // Unattended map survey, started by installer/survey.py (which writes the flag file, then restores the saves
-    // afterwards). Continues the save, loads the map item off screen, teleports through every room on it with the
-    // game's own debug teleport and lets MapMarker fit each room, so TSViewMod_mapcache.txt covers rooms the
-    // player hasn't reached yet. Writes TSViewMod_survey_report.txt and quits.
+    // Unattended map survey (installer/survey.py): continues the save, teleports through every map room so
+    // MapMarker can fit and cache it, writes TSViewMod_survey_report.txt and quits.
     public class Survey : MonoBehaviour
     {
         public static bool Active { get; private set; }
@@ -25,7 +23,7 @@ namespace TSViewMod
         private const float LoadTimeout = 60f;
         private const float FitTimeout = 240f;
 
-        // Consumed straight away, so a crash mid-survey doesn't leave the next normal launch in survey mode.
+        // Deleted on read so a crash doesn't leave the next launch in survey mode.
         public static bool TakeFlag()
         {
             try
@@ -71,7 +69,6 @@ namespace TSViewMod
 
         private IEnumerator Run()
         {
-            // 1. Main menu -> continue the save.
             InitMenuManager menu = null;
             yield return WaitFor(() => (menu = FindObjectOfType<InitMenuManager>()) != null, 180f);
             if (menu == null)
@@ -92,7 +89,7 @@ namespace TSViewMod
             LowPower(); // the game applies its own settings on load
             GodMode();
 
-            // 2. The map item, off screen, with its own scripts off (they expect the inspect screen).
+            // Map item off screen, with its scripts off (they expect the inspect screen).
             AsyncOperationHandle<GameObject> handle = Addressables.LoadAssetAsync<GameObject>(MapKey);
             yield return handle;
             if (handle.Status != AsyncOperationStatus.Succeeded || handle.Result == null)
@@ -117,7 +114,7 @@ namespace TSViewMod
                 yield break;
             }
 
-            // 3. Every room drawn on the map whose fit isn't cached yet (so a rerun only visits what's missing).
+            // Rooms on the map without a cached fit.
             var scenes = new List<string>();
             var cached = new HashSet<string>();
             foreach (MapHelperStringToGameObject entry in helper.sceneToGameObjects)
@@ -189,8 +186,7 @@ namespace TSViewMod
             Note("all rooms visited");
         }
 
-        // The game's own debug god mode (PlayerController ignores damage while it's on). It lives in the save data,
-        // which survey.py restores afterwards.
+        // The game's debug god mode; stored in the save, which survey.py restores.
         private static void GodMode()
         {
             UserDataManager data = FindObjectOfType<UserDataManager>();

@@ -5,11 +5,9 @@ using UnityEngine;
 
 namespace TSViewMod
 {
-    // The game sends keyboard movement keys to its "DPAD" actions, which drive tank controls (left/right turn her,
-    // up/down walk forward/back). That suits the fixed cameras but not a camera behind her. While a mod view is
-    // live, the same keys are also mapped to the analog move axes; when both are held the game uses the analog,
-    // camera-relative path (UserInputManager.Update), like the left stick. The analog path picks walk/run from the
-    // stick magnitude, so for keys the walk threshold is raised unless Run is held.
+    // Movement keys normally drive the game's tank controls (DPAD actions). In mod views they are also bound to the
+    // analog axes, which the game prefers, so movement becomes camera-relative. Walk/run then follows magnitude,
+    // so the walk threshold is raised unless Run is held.
     public static class KeyboardMovement
     {
         private static readonly FieldInfo WalkRangeField = typeof(PlayerMovement).GetField("m_walkInputRange", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -34,7 +32,6 @@ namespace TSViewMod
                 RemoveMaps();
             }
 
-            // Walk unless Run is held, while the keys are what's moving her.
             bool keys = active && player.controllers.GetLastActiveController()?.type == ControllerType.Keyboard;
             SetWalkMax(movement, keys && !player.GetButton("Run") ? 1.5f : -1f);
         }

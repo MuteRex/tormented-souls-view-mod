@@ -15,10 +15,8 @@ namespace TSViewMod
         FirstPerson
     }
 
-    // Adds a mod-owned Cinemachine virtual camera that sits one priority step above the game's
-    // fixed-angle ClearShot camera. When the game hands control to a puzzle/zoom camera it drops the
-    // main camera's priority to 0; we copy that, so puzzles and cutscenes keep their own shots.
-    // Runs before CinemachineBrain's LateUpdate so the brain picks up this frame's pose.
+    // Mod vcam one priority above the game's main camera; yields when the game drops that to 0 (puzzles,
+    // cutscenes). Runs before CinemachineBrain's LateUpdate.
     [DefaultExecutionOrder(-500)]
     public class ViewCamera : MonoBehaviour
     {
@@ -38,12 +36,12 @@ namespace TSViewMod
         private Vector3 m_pivot;
         private bool m_snapNextFrame = true;
         private bool m_tooClose;
-        // Camera distance from the pivot after smoothing: obstacles pull it in at once, it eases back out.
+        // Smoothed arm length: pulls in fast, eases back out.
         private float m_smoothDistance = -1f;
         private float m_holdUntil;
         private const float ReturnDelay = 0.35f;
         private const float ReturnSpeed = 1.5f; // metres per second
-        // Shoulder side: +1 right, -1 left. Swaps when a wall squeezes the current side and the other has room.
+        // Shoulder side: +1 right, -1 left.
         private float m_side = 1f;
         private float m_sideTarget = 1f;
         private float m_sideCheckAt;
@@ -55,7 +53,7 @@ namespace TSViewMod
         private float m_blockedSince = -1f;
         private float m_lastSwap = -10f;
 
-        // When the arm is shorter than FadeDistance she is hidden (shadow only) rather than filling the screen.
+        // Below FadeDistance she is hidden (shadow only).
         private const float FadeDistance = 0.35f;
 
         private readonly List<KeyValuePair<Renderer, ShadowCastingMode>> m_hiddenRenderers = new List<KeyValuePair<Renderer, ShadowCastingMode>>();
@@ -66,7 +64,7 @@ namespace TSViewMod
 
         public static ViewCamera Instance { get; private set; }
 
-        // First person is parked on the first-person branch (own version line) until it's good enough.
+        // First person is developed on the first-person branch.
         public const bool FirstPersonAvailable = false;
         public const string FirstPersonVersion = "0.1.0";
 
@@ -82,15 +80,13 @@ namespace TSViewMod
 
         private void Update()
         {
-            // Keyboard shortcut only; on controller the camera is changed in Options > View Mod
-            // (right-stick click is reserved for Reset View while inspecting).
+            // Keyboard only; on controller the view is set in Options (right-stick click is Reset View).
             if (Input.GetKeyDown(m_config.CycleViewKey))
             {
                 SetMode(Next(m_mode, 1));
             }
         }
 
-        // Cycles Original -> Third -> First, skipping first person while it isn't available.
         public static ViewMode Next(ViewMode mode, int direction)
         {
             ViewMode next = (ViewMode)(((int)mode + direction + 3) % 3);
@@ -128,8 +124,7 @@ namespace TSViewMod
                 return;
             }
 
-            // GameplayState_FreePlay unpauses the player on enter and pauses it on exit, so GamePaused is true
-            // while inspecting/rotating items, in menus and during pickups (which share the look input).
+            // GamePaused covers menus, inspect and pickups.
             PlayerMovement movement = m_player.GetPlayerMovement();
             bool freePlay = movement == null || !movement.GamePaused;
             bool looking = live && freePlay && Time.timeScale > 0f;
@@ -142,9 +137,7 @@ namespace TSViewMod
             PlaceCamera(brain);
         }
 
-        // While walking around in the mod's views the pointer is captured (so mouse look doesn't stop at the window
-        // edge) and hidden; in menus, inventory, map, inspect and the game's own cameras it goes back to how the
-        // game had it.
+        // Capture the pointer while walking in mod views; otherwise restore the game's mode.
         private bool m_cursorLocked;
         private CursorLockMode m_cursorMode;
 
@@ -175,8 +168,7 @@ namespace TSViewMod
             }
         }
 
-        // Grabs and deaths are animated for the game's fixed cameras, so the game's camera takes over for them and
-        // for a moment after (she's still getting up), then the mod's view comes back behind her.
+        // Grabs and deaths are animated for the fixed cameras, so the game's camera handles them.
         private Animator m_playerAnimator;
         private int m_animatorFlags = -1; // bit 1: has "Grabbed", bit 2: has "Dead"
         private float m_scriptedUntil;
@@ -326,7 +318,7 @@ namespace TSViewMod
 
         private void ReadLookInput()
         {
-            // Mouse is 1:1 (never speed-capped); the stick is capped at MaxTurnSpeed. Each has its own invert.
+            // Mouse is uncapped; the stick is capped at MaxTurnSpeed.
             float mouseX = Input.GetAxisRaw("Mouse X") * m_config.MouseSensitivity;
             float mouseY = Input.GetAxisRaw("Mouse Y") * m_config.MouseSensitivity * (m_config.MouseInvertY ? -1f : 1f);
             Vector2 stick = RightStick();
@@ -345,8 +337,7 @@ namespace TSViewMod
             }
             if (m_mode == ViewMode.ThirdPerson && m_config.OrbitLimit > 0f && m_config.OrbitLimit < 180f && m_player != null)
             {
-                // RE2-style: the stick can't swing the camera more than OrbitLimit round from her back, but her
-                // own turning never drags the camera (she can run toward it, like in RE2).
+                // Limit how far the stick orbits from her back, but never drag the camera when she turns.
                 float rel = Mathf.DeltaAngle(m_player.transform.eulerAngles.y, m_yaw);
                 float limit = m_config.OrbitLimit;
                 if (Mathf.Abs(rel) >= limit)
@@ -364,7 +355,7 @@ namespace TSViewMod
             m_yaw += lookX;
             m_pitch = m_mode == ViewMode.FirstPerson
                 ? Mathf.Clamp(m_pitch - lookY, -80f, 75f)
-                : Mathf.Clamp(m_pitch - lookY, -15f, 45f); // RE-like tilt range; many rooms have no ceiling
+                : Mathf.Clamp(m_pitch - lookY, -15f, 45f); // many rooms have no ceiling
         }
 
         private void PlaceCamera(CinemachineBrain brain)
@@ -376,12 +367,11 @@ namespace TSViewMod
                 m_yaw = playerTransform.eulerAngles.y;
                 m_pitch = m_mode == ViewMode.FirstPerson ? 0f : 12f;
                 m_pivot = playerTransform.position + Vector3.up * m_config.PivotHeight;
-                m_smoothDistance = -1f; // new room / view: start at the right distance, no easing
+                m_smoothDistance = -1f;
                 m_lastPlayerPos = playerTransform.position;
                 m_playerSpeed = 0f;
                 m_snapNextFrame = false;
             }
-            // How fast she's moving (smoothed), for the auto follow below.
             float frameDt = Mathf.Max(Time.unscaledDeltaTime, 1e-4f);
             Vector3 moved = playerTransform.position - m_lastPlayerPos;
             moved.y = 0f;
@@ -389,8 +379,7 @@ namespace TSViewMod
             m_lastPlayerPos = playerTransform.position;
             if (m_mode == ViewMode.ThirdPerson && m_config.AutoFollow && Time.unscaledTime - m_lastLookInput > 0.6f && m_playerSpeed > 0.4f)
             {
-                // Lazy follow: when she runs a curve or a circle the camera swings round behind her instead of
-                // staying put while she circles it. Not when she walks back toward the camera.
+                // Auto follow: swing behind her on curves, not when she walks toward the camera.
                 float facing = playerTransform.eulerAngles.y;
                 float rel = Mathf.DeltaAngle(m_yaw, facing);
                 if (Mathf.Abs(rel) < 150f)
@@ -409,22 +398,19 @@ namespace TSViewMod
             }
             else
             {
-                // Smooth the pivot: the player is a non-interpolated rigidbody, so its rendered position steps.
+                // The player rigidbody isn't interpolated, so smooth the pivot.
                 Vector3 targetPivot = playerTransform.position + Vector3.up * m_config.PivotHeight;
                 m_pivot = Vector3.Lerp(m_pivot, targetPivot, 1f - Mathf.Exp(-20f * Time.unscaledDeltaTime));
                 UpdateShoulderSide(rotation, playerTransform);
                 m_side = Mathf.SmoothDamp(m_side, m_sideTarget, ref m_sideVelocity, 0.35f, Mathf.Infinity, Time.unscaledDeltaTime);
 
-                // Spring arm, the way RE-style shoulder cameras work: the camera keeps a fixed offset in its own
-                // space (no height changes), and only its distance along the arm changes. The arm starts at the
-                // shoulder, so a blocked camera slides in toward the shoulder rather than toward the head.
+                // Spring arm from the shoulder: only the arm length changes, never the height.
                 Vector3 shoulder = ResolveCollision(m_pivot, m_pivot + rotation * new Vector3(m_config.ShoulderOffset * m_side, 0.1f, 0f), playerTransform);
                 Vector3 back = rotation * Vector3.back;
                 float full = m_config.ThirdPersonDistance;
                 float target = Vector3.Distance(shoulder, Constrain(shoulder, shoulder + back * full, playerTransform));
 
-                // Pull in fast but not in one frame (stops single-frame pops from props and edges), never letting the
-                // camera sit behind the obstacle for more than a moment; ease back out only after a short hold.
+                // Pull in quickly (not in one frame), hold, then ease back out.
                 float now = Time.unscaledTime;
                 float dt = Mathf.Max(Time.unscaledDeltaTime, 1e-4f);
                 if (m_smoothDistance < 0f)
@@ -460,8 +446,7 @@ namespace TSViewMod
             m_vcam.transform.SetPositionAndRotation(position, rotation);
         }
 
-        // Auto shoulder: swap only when the current side has been clearly squeezed for a while and the other side
-        // really has room, with a cooldown, so walking past furniture doesn't flip the camera back and forth.
+        // Swap only after a sustained squeeze with room on the other side, with a cooldown.
         private void UpdateShoulderSide(Quaternion rotation, Transform player)
         {
             if (string.Equals(m_config.ShoulderSide, "Right", System.StringComparison.OrdinalIgnoreCase))
@@ -504,15 +489,12 @@ namespace TSViewMod
             return new Vector3(m_config.ShoulderOffset * side, 0.1f, -m_config.ThirdPersonDistance);
         }
 
-        // Colliders first, then the room's walkable area: some walls in this fixed-camera game have no collider,
-        // but the NavMesh always stops at them, so the camera may overhang its edge by at most NavOverhang.
+        // Colliders first, then the walkable area: many walls have no collider and only void behind them.
         private const float NavOverhang = 0.3f;
 
         private static Vector3 Constrain(Vector3 pivot, Vector3 desired, Transform player)
         {
             Vector3 position = ResolveCollision(pivot, desired, player);
-            // Walk out along the arm and stop where it leaves the room's walkable area (+ overhang): walls in this
-            // fixed-camera game often have no collider and no back side, and behind them is the void.
             Vector3 arm = position - pivot;
             float length = arm.magnitude;
             if (length < 0.01f || !MapMarker.InsideRoom(pivot, NavOverhang))
@@ -559,8 +541,7 @@ namespace TSViewMod
             return pivot + dir * Mathf.Max(best - 0.05f, 0.25f);
         }
 
-        // Small props (lamps, chair and bed legs, poles, trolleys) and enemies don't push the camera; only walls,
-        // big furniture, floors and ceilings do. Cached per collider.
+        // Small props and enemies don't push the camera; walls, big furniture, floors and ceilings do.
         private static readonly Dictionary<Collider, bool> s_ignored = new Dictionary<Collider, bool>();
 
         private static bool IgnoredByCamera(Collider collider)
@@ -581,8 +562,7 @@ namespace TSViewMod
             return ignored;
         }
 
-        // Wherever the camera still sees past the built set, show black (the game's darkness) instead of the
-        // camera's default background. Restored as soon as the game's own cameras are back.
+        // Clear to black where the set has no geometry.
         private Camera m_voidCamera;
         private CameraClearFlags m_voidFlags;
         private Color m_voidColour;
@@ -605,8 +585,7 @@ namespace TSViewMod
             }
         }
 
-        // Railings, banisters, tables, counters and benches: the camera looks over/through them (as in RE2) instead
-        // of being pushed into her head. Floors (top near her feet) and ceilings (above her head) still count.
+        // Railings, tables and counters: look over them rather than pull into her head.
         private static bool WaistHigh(Collider collider, float feet)
         {
             Bounds b = collider.bounds;

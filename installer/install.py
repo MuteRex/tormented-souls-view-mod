@@ -13,8 +13,11 @@ import json
 import shutil
 from pathlib import Path
 
+HERE = Path(__file__).resolve().parent
 DEFAULT_GAME = Path("/mnt/media/Games/Tormented Souls")
-DEFAULT_DLL = Path(__file__).resolve().parent.parent / "TSViewMod/bin/Release/net472/TSViewMod.dll"
+# Release zip: DLL and map cache sit next to this script. Repo: build output and data/.
+DLL_CANDIDATES = [HERE / "TSViewMod.dll", HERE.parent / "TSViewMod/bin/Release/net472/TSViewMod.dll"]
+CACHE_CANDIDATES = [HERE / "TSViewMod_mapcache.txt", HERE.parent / "data/TSViewMod_mapcache.txt"]
 ASSEMBLY = "TSViewMod"
 ENTRY = {
     "assemblyName": ASSEMBLY,
@@ -29,7 +32,7 @@ ENTRY = {
 def data_dir(game: Path) -> Path:
     d = game / "TormentedSouls_Data"
     if not (d / "Managed" / "Assembly-CSharp.dll").exists():
-        raise SystemExit(f"not a Tormented Souls install: {game}")
+        raise SystemExit(f"not a Tormented Souls install: {game}\npass the game folder with --game \"/path/to/Tormented Souls\"")
     return d
 
 
@@ -45,11 +48,17 @@ def write_json(path: Path, data) -> None:
     tmp.replace(path)
 
 
-def install(game: Path, dll: Path) -> None:
+def install(game: Path, dll: Path | None) -> None:
     d = data_dir(game)
-    if not dll.exists():
-        raise SystemExit(f"build the mod first, missing {dll}")
+    dll = dll or next((c for c in DLL_CANDIDATES if c.exists()), None)
+    if dll is None or not dll.exists():
+        raise SystemExit("TSViewMod.dll not found: build the mod first or pass --dll")
     shutil.copy2(dll, d / "Managed" / dll.name)
+
+    # Pre-computed map fits, so the map dot works in every room straight away. Never overwrites the player's own.
+    cache = next((c for c in CACHE_CANDIDATES if c.exists()), None)
+    if cache is not None and not (d / cache.name).exists():
+        shutil.copy2(cache, d / cache.name)
 
     sa_path = d / "ScriptingAssemblies.json"
     sa = json.loads(sa_path.read_text(encoding="utf-8"))
@@ -89,7 +98,7 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("action", choices=["install", "uninstall"])
     p.add_argument("--game", type=Path, default=DEFAULT_GAME)
-    p.add_argument("--dll", type=Path, default=DEFAULT_DLL)
+    p.add_argument("--dll", type=Path)
     a = p.parse_args()
     if a.action == "install":
         install(a.game, a.dll)
