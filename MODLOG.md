@@ -95,3 +95,4 @@ Goal: toggleable third-person / first-person camera + red "you are here" marker 
     <game>/TSViewMod_debug/. Orient/inverse math verified offline (8 distinct, exact inverse).
 - Versioning rule (user, from v0.9.0): +0.1 only when the user confirms a fix works; otherwise patch bumps
   inside the current step (0.9.0 -> 0.9.1 -> 0.9.2 ...).
+- v1.0.0: user confirmed the v0.9.0 fixes (door-weighted fit puts the dot on the Delivery Room side; door markers verified). Same code as 0.9.0, version bumped per rule.
