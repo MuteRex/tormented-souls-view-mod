@@ -106,3 +106,14 @@ Goal: toggleable third-person / first-person camera + red "you are here" marker 
     AND scale to settle (gives up after 3 s); each open votes and the majority per map (name|nAxis) is used and
     persisted in TormentedSouls_Data/TSViewMod_mappose.txt.
   * Debug door dots hidden when the sheet's back faces the camera.
+
+## Planned (deferred to save the user's usage — do in a fresh session when weekly usage allows)
+Offline room extraction: precompute world->map fits for every room so unvisited rooms are right first time.
+- Scene list: globalgamemanagers BuildSettings (UnityPy) -> levelN per room scene.
+- Map highlights: find the map prefab(s) with MapHelperRoom (MonoBehaviour typetrees need UnityPy's
+  TypeTreeGenerator with the Managed DLLs, as used for the Rewired input dump), read each highlight mesh (UnityPy
+  reads meshes regardless of isReadable) + transforms -> outline in map-local space.
+- World footprint: NavMeshData in sharedassetsN (m_NavMeshTiles, binary Detour tiles) or floor colliders; doors from
+  SceneEntrancePoints + SceneDataSO.DoorConnector.
+- Same scoring as runtime (2.0 * door penalty + (1 - IoU)); write TSViewMod_mapcache.txt lines (CacheVersion 2,
+  key scene|tab|highlightName) and a report of weak rooms. Runtime keeps working without it.
