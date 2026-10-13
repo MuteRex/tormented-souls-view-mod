@@ -25,6 +25,8 @@ namespace TSViewMod
         public bool MapMarker = true;
         public bool InspectReset = true;
         public KeyCode ResetRotationKey = KeyCode.R;
+        public KeyCode DebugOverlayKey = KeyCode.F8;
+        public KeyCode SnapshotKey = KeyCode.F9;
 
         public static string FilePath => Path.Combine(Application.dataPath, "TSViewMod.cfg");
 
@@ -68,6 +70,8 @@ namespace TSViewMod
                 config.MapMarker = GetBool(values, "MapMarker", config.MapMarker);
                 config.InspectReset = GetBool(values, "InspectReset", config.InspectReset);
                 config.ResetRotationKey = GetKey(values, "ResetRotationKey", config.ResetRotationKey);
+                config.DebugOverlayKey = GetKey(values, "DebugOverlayKey", config.DebugOverlayKey);
+                config.SnapshotKey = GetKey(values, "SnapshotKey", config.SnapshotKey);
                 // Rewrite so settings added in newer versions appear in the file (values are kept).
                 config.Save();
             }
@@ -105,6 +109,9 @@ namespace TSViewMod
                 "# While inspecting an item: this key, middle mouse or right-stick click resets its rotation.",
                 "InspectReset=" + InspectReset,
                 "ResetRotationKey=" + ResetRotationKey,
+                "# Debugging: on-screen readout (+ door markers on the map), and screenshot + state dump to TSViewMod_debug/.",
+                "DebugOverlayKey=" + DebugOverlayKey,
+                "SnapshotKey=" + SnapshotKey,
             });
         }
 

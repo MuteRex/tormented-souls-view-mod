@@ -21,6 +21,7 @@ namespace TSViewMod
             go.AddComponent<ViewCamera>();
             go.AddComponent<MapMarker>();
             go.AddComponent<InspectReset>();
+            go.AddComponent<DebugTools>();
         }
 
         public static void Log(string message)

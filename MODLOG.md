@@ -83,3 +83,13 @@ Goal: toggleable third-person / first-person camera + red "you are here" marker 
   hall stairs) is drawn as the thin orange strip along the top of the L over Delivery Room; rect clamp parked the
   dot on the rect's corner (Delivery Room). Now the room outline mask is rendered on every open (one 64x64 draw +
   readback) and the dot snaps to the nearest outline cell, nudged toward its 5x5 neighbourhood centre.
+- v0.9.0 (video 02-21-01 review, user OK'd fixes):
+  * Downstairs dot likely mirrored (player by the green door + angel statues, next to Delivery Room; dot on the west
+    side by the stairs). Fit IoU only ~0.40 (navmesh = both floors + stairs vs one outline), so mirror candidates
+    were close and doors (weight 0.1) couldn't decide. Now score = 2.0 * door penalty + (1 - IoU); all 8
+    orientation scores + door list (with "not on this map") logged; CacheVersion "2" forces a refit.
+  * 3rd-person camera went inside Caroline's hood with a wall behind (51-52 s). Now: under 0.9 m the camera rises
+    over the shoulder (ceiling-checked); under 0.5 m her renderers go shadow-only.
+  * Debug tools: F8 overlay (scene, pos, free play, view/yaw/pitch/distance, mod cam priority/live, active vcam,
+    map fit + player uv raw/snapped), blue door markers on the map while the overlay is on, F9 screenshot + state to
+    <game>/TSViewMod_debug/. Orient/inverse math verified offline (8 distinct, exact inverse).

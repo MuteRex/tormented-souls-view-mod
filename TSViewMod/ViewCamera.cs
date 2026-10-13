@@ -36,6 +36,12 @@ namespace TSViewMod
         private float m_pitch;
         private Vector3 m_pivot;
         private bool m_snapNextFrame = true;
+        private bool m_tooClose;
+
+        // Below CloseDistance from the pivot the camera rises over the shoulder; below FadeDistance she is hidden
+        // (shadow only) rather than letting the camera sit inside her head.
+        private const float CloseDistance = 0.9f;
+        private const float FadeDistance = 0.5f;
 
         private readonly List<KeyValuePair<Renderer, ShadowCastingMode>> m_hiddenRenderers = new List<KeyValuePair<Renderer, ShadowCastingMode>>();
 
@@ -79,7 +85,8 @@ namespace TSViewMod
             CinemachineVirtualCameraBase mainCamera = m_cameraManager != null ? MainVirtualCameraField?.GetValue(m_cameraManager) as CinemachineVirtualCameraBase : null;
             bool canTakeOver = m_mode != ViewMode.Original && m_player != null && mainCamera != null && mainCamera.Priority > 0;
             m_vcam.Priority = canTakeOver ? mainCamera.Priority + 1 : 0;
-            UpdateBodyVisibility(canTakeOver && m_mode == ViewMode.FirstPerson);
+            bool hideBody = canTakeOver && (m_mode == ViewMode.FirstPerson && m_config.HideBodyInFirstPerson || m_mode == ViewMode.ThirdPerson && m_tooClose);
+            UpdateBodyVisibility(hideBody);
             if (!canTakeOver)
             {
                 m_snapNextFrame = true;
@@ -111,6 +118,19 @@ namespace TSViewMod
             GUI.Label(new Rect(rect.x + 2f, rect.y + 2f, rect.width, rect.height), m_toast, style);
             style.normal.textColor = Color.white;
             GUI.Label(rect, m_toast, style);
+        }
+
+        public string DebugState()
+        {
+            string live = "no camera manager";
+            if (m_cameraManager != null && m_vcam != null)
+            {
+                CinemachineBrain brain = m_cameraManager.GetBrain();
+                bool isLive = brain != null && brain.ActiveVirtualCamera == (ICinemachineCamera)m_vcam;
+                live = "mod camera priority " + m_vcam.Priority + (isLive ? " (live)" : " (game camera live)");
+            }
+            string distance = m_vcam != null && m_mode == ViewMode.ThirdPerson ? "  distance " + Vector3.Distance(m_vcam.transform.position, m_pivot).ToString("0.00") + (m_tooClose ? " (faded)" : "") : "";
+            return "view: " + m_mode + "  yaw " + m_yaw.ToString("0") + " pitch " + m_pitch.ToString("0") + distance + "\n" + live;
         }
 
         public void ShowToast(string text)
@@ -232,6 +252,20 @@ namespace TSViewMod
                 Vector3 offset = new Vector3(m_config.ShoulderOffset, 0.1f, -m_config.ThirdPersonDistance);
                 Vector3 desired = m_pivot + rotation * offset;
                 position = ResolveCollision(m_pivot, desired, playerTransform);
+                float distance = Vector3.Distance(position, m_pivot);
+                if (distance < CloseDistance)
+                {
+                    // A wall is pushing the camera into her: rise over the shoulder instead (up to a ceiling).
+                    float k = Mathf.Clamp01((CloseDistance - distance) / 0.6f);
+                    Vector3 highPivot = ResolveCollision(m_pivot, m_pivot + Vector3.up * 0.6f * k, playerTransform);
+                    Vector3 high = ResolveCollision(highPivot, highPivot + rotation * offset, playerTransform);
+                    if (Vector3.Distance(high, m_pivot) > distance)
+                    {
+                        position = high;
+                        distance = Vector3.Distance(high, m_pivot);
+                    }
+                }
+                m_tooClose = distance < FadeDistance;
                 m_vcam.m_Lens.FieldOfView = m_config.FieldOfView;
             }
             if (brain != null && brain.OutputCamera != null)
@@ -268,7 +302,6 @@ namespace TSViewMod
 
         private void UpdateBodyVisibility(bool hide)
         {
-            hide &= m_config.HideBodyInFirstPerson;
             if (hide && m_hiddenRenderers.Count == 0 && m_player != null)
             {
                 foreach (Renderer r in m_player.GetComponentsInChildren<Renderer>())

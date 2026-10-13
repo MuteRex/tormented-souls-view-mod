@@ -18,6 +18,8 @@ entries in Unity's startup lists.
 | Mouse / right stick | Look around (third/first person) |
 | **F7** | Map marker on/off |
 | **R**, middle mouse or right-stick click (while inspecting) | Reset the item's rotation |
+| **F8** | Debug overlay (scene, position, camera, map fit) + blue door markers on the map |
+| **F9** | Debug snapshot: screenshot + state text in `<game>/TSViewMod_debug/` |
 
 Movement uses the analog stick or WASD and follows the camera direction. The d-pad keeps tank controls.
 

@@ -33,6 +33,8 @@ namespace TSViewMod
             public Vector2 rectMin;
             public Vector2 rectMax;
             public MapMask shape;
+            public List<KeyValuePair<string, Vector2>> doors;
+            public readonly List<Transform> doorDots = new List<Transform>();
         }
 
         private class Marked
@@ -133,6 +135,7 @@ namespace TSViewMod
                     {
                         Vector3 p = m_player.transform.position;
                         Vector2 uv = room.fit.Apply(new Vector2(p.x, p.z));
+                        Vector2 rawUv = uv;
                         // The player is in this room, so keep the dot inside the room's shape on the map
                         // (navmesh areas like stair landings can map slightly past the drawn outline).
                         // Snap into the drawn shape (an L-shaped room's bounding box covers neighbouring rooms).
@@ -150,6 +153,13 @@ namespace TSViewMod
                         local[marked.uAxis] = uv.x;
                         local[marked.vAxis] = uv.y;
                         local[marked.nAxis] = room.normalCoord;
+                        if (DebugTools.Enabled)
+                        {
+                            DebugTools.MapInfo = "map: " + room.key + "  orientation " + room.fit.orientation + " scale " + room.fit.scale.ToString("0.0000")
+                                + " IoU " + room.fit.iou.ToString("0.00") + "\n  player map uv " + rawUv.ToString("0.000")
+                                + ((rawUv - uv).sqrMagnitude > 1e-8f ? " -> snapped " + uv.ToString("0.000") : " (inside room)")
+                                + "\n  blue dots = door spawn points, each should sit at its door";
+                        }
                     }
                     else
                     {
@@ -171,10 +181,67 @@ namespace TSViewMod
                     {
                         dotRenderer.enabled = facing;
                     }
+                    UpdateDoorDots(marked, room);
                     float size = marked.dotSize * pulse;
                     Vector3 parentScale = room.dot.parent != null ? room.dot.parent.lossyScale : Vector3.one;
                     room.dot.localScale = new Vector3(size / Safe(parentScale.x), size / Safe(parentScale.y), size / Safe(parentScale.z));
                 }
+            }
+        }
+
+        private static readonly Color DoorBlue = new Color(0.1f, 0.45f, 1f, 1f);
+        private Material m_doorMaterial;
+
+        // Debug: door spawn points mapped through the room's fit. On a correct fit each sits just inside its doorway.
+        private void UpdateDoorDots(Marked marked, RoomDot room)
+        {
+            bool show = DebugTools.Enabled && m_enabled && room.ready && room.hasFit && room.doors != null;
+            if (!show)
+            {
+                foreach (Transform t in room.doorDots)
+                {
+                    if (t != null && t.gameObject.activeSelf)
+                    {
+                        t.gameObject.SetActive(false);
+                    }
+                }
+                return;
+            }
+            while (room.doorDots.Count < room.doors.Count)
+            {
+                Transform t = CreateDot(room.highlight);
+                t.name = "TSViewMod_DoorDot";
+                if (m_doorMaterial == null)
+                {
+                    m_doorMaterial = new Material(GetMaterial(t.GetComponent<Renderer>())) { color = DoorBlue };
+                }
+                t.GetComponent<Renderer>().sharedMaterial = m_doorMaterial;
+                room.doorDots.Add(t);
+            }
+            Transform sheet = marked.helper.transform;
+            Vector3 front = sheet.TransformDirection(FrontNormalLocal(marked.nAxis, marked.frontSign)).normalized;
+            for (int i = 0; i < room.doorDots.Count; i++)
+            {
+                Transform t = room.doorDots[i];
+                if (t == null)
+                {
+                    continue;
+                }
+                bool active = i < room.doors.Count;
+                t.gameObject.SetActive(active);
+                if (!active)
+                {
+                    continue;
+                }
+                Vector2 uv = room.fit.Apply(room.doors[i].Value);
+                Vector3 local = Vector3.zero;
+                local[marked.uAxis] = uv.x;
+                local[marked.vAxis] = uv.y;
+                local[marked.nAxis] = room.normalCoord;
+                t.position = sheet.TransformPoint(local) + front * marked.dotSize * 0.6f;
+                float size = marked.dotSize * 0.6f;
+                Vector3 parentScale = t.parent != null ? t.parent.lossyScale : Vector3.one;
+                t.localScale = new Vector3(size / Safe(parentScale.x), size / Safe(parentScale.y), size / Safe(parentScale.z));
             }
         }
 
@@ -255,6 +322,7 @@ namespace TSViewMod
                 dot.dot = CreateDot(room.highlight);
                 // One small GPU draw + readback of the room's outline; used to keep the dot inside it.
                 dot.shape = RenderMapMask(helper.transform, room, marked.uAxis, marked.vAxis, marked.nAxis);
+                dot.doors = DoorPoints();
                 if (FitCache.TryGet(dot.key, out Fit cached))
                 {
                     dot.fit = cached;
@@ -274,7 +342,7 @@ namespace TSViewMod
             }
             else
             {
-                Loader.Log("map marker: scene " + scene + ", " + marked.rooms.Count + " dot(s) from cache, front sign " + marked.frontSign);
+                Loader.Log("map marker: scene " + scene + ", " + marked.rooms.Count + " dot(s) from cache");
             }
             return marked;
         }
@@ -287,7 +355,12 @@ namespace TSViewMod
             log.Append("map marker: scene ").Append(marked.scene).Append(", normal axis ").Append(marked.nAxis);
             WorldMask world = WorldMask.Build(log);
             List<KeyValuePair<string, Vector2>> doors = DoorPoints();
-            log.Append(", doors ").Append(doors.Count);
+            log.Append(", doors ").Append(doors.Count).Append(':');
+            foreach (KeyValuePair<string, Vector2> door in doors)
+            {
+                bool onMap = rooms.Exists(r => r.name == door.Key);
+                log.Append(' ').Append(door.Key).Append(onMap ? "" : "(not on this map)").Append('@').Append(door.Value.ToString("0.0"));
+            }
             foreach (KeyValuePair<RoomShape, RoomDot> item in pending)
             {
                 RoomDot dot = item.Value;
@@ -496,7 +569,7 @@ namespace TSViewMod
         }
 
         // Bump when the fitting method changes so old entries are recomputed.
-        private const string CacheVersion = "1";
+        private const string CacheVersion = "2";
 
         private const long FrameBudgetMs = 4;
 
@@ -560,8 +633,12 @@ namespace TSViewMod
                         slice.Restart();
                     }
                 }
-                orientBest.score += 0.1f * DoorPenalty(orientBest, doors, rooms, u, v, roomRect, diag);
-                log.Append("\n    o").Append(o).Append(" IoU ").Append(orientBest.iou.ToString("0.000")).Append(" score ").Append(orientBest.score.ToString("0.000"));
+                // Doors decide between mirror/rotation candidates whose shapes overlap about equally: each door's
+                // spawn point must land next to the room it leads to. Shape overlap only breaks remaining ties.
+                float doorPenalty = DoorPenalty(orientBest, doors, rooms, u, v, roomRect, diag);
+                orientBest.score = DoorWeight * doorPenalty + (1f - orientBest.iou);
+                log.Append("\n    o").Append(o).Append(" IoU ").Append(orientBest.iou.ToString("0.000"))
+                    .Append(" doors ").Append(doorPenalty.ToString("0.000")).Append(" score ").Append(orientBest.score.ToString("0.000"));
                 if (orientBest.score < best.score)
                 {
                     best = orientBest;
@@ -606,6 +683,8 @@ namespace TSViewMod
             float union = mapInside + Mathf.Max(worldInside, worldCells) - inter;
             return union > 0f ? inter / union : 0f;
         }
+
+        private const float DoorWeight = 2f;
 
         private static float DoorPenalty(Fit fit, List<KeyValuePair<string, Vector2>> doors, List<RoomShape> rooms, int u, int v, Rect2 roomRect, float diag)
         {
