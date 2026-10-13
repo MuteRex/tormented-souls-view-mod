@@ -83,6 +83,7 @@ map in each room.
 - `installer/survey.py` fits every map room unattended (backs up and restores saves; see the script's header). Its
   defaults are for the author's setup; pass `--game`, `--compat` and `--url` for yours.
 - The first-person camera is developed separately and isn't part of this repository yet.
+- `tests/` has unit tests for the pure parts (config format): `dotnet test tests/TSViewMod.Tests`.
 - `MODLOG.md` has engine notes, decisions and gotchas.
 
 ## Credits

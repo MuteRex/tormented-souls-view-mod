@@ -202,3 +202,6 @@ Labelled beta. Windows: installer/install.ps1 + install.bat (Steam libraryfolder
 
 ## v1.3.4-beta (2026-10-13)
 Options -> "Keyboard & Mouse" category (second injected category; OptionsPage.AddCategory). Selector row (Movement & Combat / Menus & Items / View Mod) + up to 7 read-only rows (arrows hidden, not in nav). Game keys read live from Rewired keyboard+mouse maps (KeyBindings.cs); action names: Run, Fast Turn, Aim, Shoot, Reload, Confirm, Cancel, Menu (inventory), LanternSwitch (map), Options (pause), SkipLeft/SkipRight, DPAD axes (move). The game has its own hidden ControllerTypePanelKeyboard (always disabled in OnEnter) - unused.
+
+## v1.3.5-beta (2026-10-13)
+Performance: RoomBounds (new) builds the walkable mask over frames (2 ms budget, floor probe yields per row) instead of in one go, and the map fit reuses it rather than rebuilding; the options-menu search (Resources.FindObjectsOfTypeAll) only runs for 5 s after scene loads (nav re-insert stays, cheap). Cleanup, no behaviour change: MapMarker split into partial files (PoseVotes, Fitting, WorldMask, MapMask, Shapes); ViewCamera side jobs moved to CameraCollision, PadInput, CursorCapture, ScriptedAttackWatch, VoidFill; Config is table-driven (Layout) with pure Parse/Serialize, covered by xunit tests (tests/TSViewMod.Tests) incl. a legacy-serializer comparison and golden default.cfg.

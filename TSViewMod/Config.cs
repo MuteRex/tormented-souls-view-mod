@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
 using UnityEngine;
 
 namespace TSViewMod
@@ -40,73 +41,66 @@ namespace TSViewMod
 
         public static string FilePath => Loader.DataFile("TSViewMod.cfg");
 
+        // File layout: each setting once, in file order, with the comment lines written above it.
+        private static readonly (string name, string comment)[] Layout =
+        {
+            (nameof(CycleViewKey), "# Tormented Souls view mod settings. Delete this file to reset to defaults.\n# Keys use Unity KeyCode names (F6, F7, V, Tab, ...)."),
+            (nameof(MapMarkerKey), null),
+            (nameof(StartView), "# Original, ThirdPerson or FirstPerson"),
+            (nameof(MouseSensitivity), "# Camera speed for mouse and for the right stick (set separately), and Y inversion for each."),
+            (nameof(StickSensitivity), null),
+            (nameof(InvertY), null),
+            (nameof(MouseInvertY), null),
+            (nameof(LockCursor), "# Third/first person: capture and hide the mouse pointer while you walk around (released in menus)."),
+            (nameof(KeyboardCameraRelative), "# Third/first person: movement keys move her relative to the camera (like the stick) instead of the\n# game's tank controls; she walks, and runs while Run is held."),
+            (nameof(OrbitLimit), "# Third person: how far (degrees) the camera may swing round from behind her (0 = no limit),\n# and the fastest the right stick may turn it (degrees per second; the mouse is never capped)."),
+            (nameof(MaxTurnSpeed), null),
+            (nameof(AutoFollow), "# Third person: while she moves and you aren't steering the camera, it swings round behind her."),
+            (nameof(AutoFollowSpeed), null),
+            (nameof(ThirdPersonDistance), null),
+            (nameof(ShoulderOffset), null),
+            (nameof(ShoulderSide), "# Auto (swaps away from walls), Right or Left"),
+            (nameof(PivotHeight), null),
+            (nameof(FieldOfView), null),
+            (nameof(FirstPersonFieldOfView), null),
+            (nameof(HideBodyInFirstPerson), null),
+            (nameof(MapMarker), "# Red dot on your current room in the map screen."),
+            (nameof(MapArrow), "# Pointer on the red dot showing which way she faces."),
+            (nameof(GameCameraOnGrab), "# Hand over to the game's own camera while an enemy grabs her and when she dies (those animations\n# were made for the fixed cameras)."),
+            (nameof(InspectReset), "# While inspecting an item: this key, this mouse button (0 left, 1 right, 2 middle, 3-6 extra, -1 none)\n# or right-stick click resets its rotation."),
+            (nameof(ResetRotationKey), null),
+            (nameof(ResetRotationMouseButton), null),
+            (nameof(DebugOverlayKey), "# Debugging: on-screen readout (+ door markers on the map), and screenshot + state dump to TSViewMod_debug/."),
+            (nameof(SnapshotKey), null),
+        };
+
         public static Config Load()
         {
-            var config = new Config();
             try
             {
                 if (!File.Exists(FilePath))
                 {
-                    config.Save();
-                    return config;
+                    var fresh = new Config();
+                    fresh.Save();
+                    return fresh;
                 }
-                var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                foreach (string raw in File.ReadAllLines(FilePath))
-                {
-                    string line = raw.Trim();
-                    if (line.Length == 0 || line.StartsWith("#"))
-                    {
-                        continue;
-                    }
-                    int eq = line.IndexOf('=');
-                    if (eq > 0)
-                    {
-                        values[line.Substring(0, eq).Trim()] = line.Substring(eq + 1).Trim();
-                    }
-                }
-                config.CycleViewKey = GetKey(values, "CycleViewKey", config.CycleViewKey);
-                config.MapMarkerKey = GetKey(values, "MapMarkerKey", config.MapMarkerKey);
-                config.StartView = values.TryGetValue("StartView", out string start) ? start : config.StartView;
-                config.MouseSensitivity = GetFloat(values, "MouseSensitivity", config.MouseSensitivity);
-                config.StickSensitivity = GetFloat(values, "StickSensitivity", config.StickSensitivity);
-                config.InvertY = GetBool(values, "InvertY", config.InvertY);
-                config.MouseInvertY = GetBool(values, "MouseInvertY", config.InvertY); // older files: one shared setting
-                config.LockCursor = GetBool(values, "LockCursor", config.LockCursor);
-                config.KeyboardCameraRelative = GetBool(values, "KeyboardCameraRelative", config.KeyboardCameraRelative);
-                config.OrbitLimit = GetFloat(values, "OrbitLimit", config.OrbitLimit);
-                config.MaxTurnSpeed = GetFloat(values, "MaxTurnSpeed", config.MaxTurnSpeed);
-                config.AutoFollow = GetBool(values, "AutoFollow", config.AutoFollow);
-                config.AutoFollowSpeed = GetFloat(values, "AutoFollowSpeed", config.AutoFollowSpeed);
-                config.ThirdPersonDistance = GetFloat(values, "ThirdPersonDistance", config.ThirdPersonDistance);
-                config.ShoulderOffset = GetFloat(values, "ShoulderOffset", config.ShoulderOffset);
-                config.ShoulderSide = values.TryGetValue("ShoulderSide", out string side) ? side : config.ShoulderSide;
-                config.PivotHeight = GetFloat(values, "PivotHeight", config.PivotHeight);
-                config.FieldOfView = GetFloat(values, "FieldOfView", config.FieldOfView);
-                config.FirstPersonFieldOfView = GetFloat(values, "FirstPersonFieldOfView", config.FirstPersonFieldOfView);
-                config.HideBodyInFirstPerson = GetBool(values, "HideBodyInFirstPerson", config.HideBodyInFirstPerson);
-                config.MapMarker = GetBool(values, "MapMarker", config.MapMarker);
-                config.MapArrow = GetBool(values, "MapArrow", config.MapArrow);
-                config.GameCameraOnGrab = GetBool(values, "GameCameraOnGrab", config.GameCameraOnGrab);
-                config.InspectReset = GetBool(values, "InspectReset", config.InspectReset);
-                config.ResetRotationKey = GetKey(values, "ResetRotationKey", config.ResetRotationKey);
-                config.ResetRotationMouseButton = (int)GetFloat(values, "ResetRotationMouseButton", config.ResetRotationMouseButton);
-                config.DebugOverlayKey = GetKey(values, "DebugOverlayKey", config.DebugOverlayKey);
-                config.SnapshotKey = GetKey(values, "SnapshotKey", config.SnapshotKey);
+                Config config = Parse(File.ReadAllLines(FilePath));
                 // Rewrite so newly added settings appear in the file.
                 config.Save();
+                return config;
             }
             catch (Exception e)
             {
                 Loader.Log("config error, using defaults: " + e.Message);
+                return new Config();
             }
-            return config;
         }
 
         public void Save()
         {
             try
             {
-                Write();
+                File.WriteAllLines(FilePath, Serialize());
             }
             catch (Exception e)
             {
@@ -114,83 +108,79 @@ namespace TSViewMod
             }
         }
 
-        private void Write()
+        // Unknown keys and unparsable values are ignored (the default stays).
+        public static Config Parse(IEnumerable<string> lines)
         {
-            var inv = CultureInfo.InvariantCulture;
-            File.WriteAllLines(FilePath, new[]
+            var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string raw in lines)
             {
-                "# Tormented Souls view mod settings. Delete this file to reset to defaults.",
-                "# Keys use Unity KeyCode names (F6, F7, V, Tab, ...).",
-                "CycleViewKey=" + CycleViewKey,
-                "MapMarkerKey=" + MapMarkerKey,
-                "# Original, ThirdPerson or FirstPerson",
-                "StartView=" + StartView,
-                "# Camera speed for mouse and for the right stick (set separately), and Y inversion for each.",
-                "MouseSensitivity=" + MouseSensitivity.ToString(inv),
-                "StickSensitivity=" + StickSensitivity.ToString(inv),
-                "InvertY=" + InvertY,
-                "MouseInvertY=" + MouseInvertY,
-                "# Third/first person: capture and hide the mouse pointer while you walk around (released in menus).",
-                "LockCursor=" + LockCursor,
-                "# Third/first person: movement keys move her relative to the camera (like the stick) instead of the",
-                "# game's tank controls; she walks, and runs while Run is held.",
-                "KeyboardCameraRelative=" + KeyboardCameraRelative,
-                "# Third person: how far (degrees) the camera may swing round from behind her (0 = no limit),",
-                "# and the fastest the right stick may turn it (degrees per second; the mouse is never capped).",
-                "OrbitLimit=" + OrbitLimit.ToString(inv),
-                "MaxTurnSpeed=" + MaxTurnSpeed.ToString(inv),
-                "# Third person: while she moves and you aren't steering the camera, it swings round behind her.",
-                "AutoFollow=" + AutoFollow,
-                "AutoFollowSpeed=" + AutoFollowSpeed.ToString(inv),
-                "ThirdPersonDistance=" + ThirdPersonDistance.ToString(inv),
-                "ShoulderOffset=" + ShoulderOffset.ToString(inv),
-                "# Auto (swaps away from walls), Right or Left",
-                "ShoulderSide=" + ShoulderSide,
-                "PivotHeight=" + PivotHeight.ToString(inv),
-                "FieldOfView=" + FieldOfView.ToString(inv),
-                "FirstPersonFieldOfView=" + FirstPersonFieldOfView.ToString(inv),
-                "HideBodyInFirstPerson=" + HideBodyInFirstPerson,
-                "# Red dot on your current room in the map screen.",
-                "MapMarker=" + MapMarker,
-                "# Pointer on the red dot showing which way she faces.",
-                "MapArrow=" + MapArrow,
-                "# Hand over to the game's own camera while an enemy grabs her and when she dies (those animations",
-                "# were made for the fixed cameras).",
-                "GameCameraOnGrab=" + GameCameraOnGrab,
-                "# While inspecting an item: this key, this mouse button (0 left, 1 right, 2 middle, 3-6 extra, -1 none)",
-                "# or right-stick click resets its rotation.",
-                "InspectReset=" + InspectReset,
-                "ResetRotationKey=" + ResetRotationKey,
-                "ResetRotationMouseButton=" + ResetRotationMouseButton,
-                "# Debugging: on-screen readout (+ door markers on the map), and screenshot + state dump to TSViewMod_debug/.",
-                "DebugOverlayKey=" + DebugOverlayKey,
-                "SnapshotKey=" + SnapshotKey,
-            });
+                string line = raw.Trim();
+                int eq = line.IndexOf('=');
+                if (line.Length > 0 && !line.StartsWith("#") && eq > 0)
+                {
+                    values[line.Substring(0, eq).Trim()] = line.Substring(eq + 1).Trim();
+                }
+            }
+            var config = new Config();
+            foreach ((string name, string _) in Layout)
+            {
+                if (values.TryGetValue(name, out string text))
+                {
+                    FieldInfo field = typeof(Config).GetField(name);
+                    if (TryConvert(text, field.FieldType, out object value))
+                    {
+                        field.SetValue(config, value);
+                    }
+                }
+            }
+            if (!values.ContainsKey(nameof(MouseInvertY)))
+            {
+                config.MouseInvertY = config.InvertY; // older files: one shared setting
+            }
+            return config;
         }
 
-        private static KeyCode GetKey(Dictionary<string, string> values, string key, KeyCode fallback)
+        public string[] Serialize()
         {
-            if (values.TryGetValue(key, out string s))
+            var lines = new List<string>();
+            foreach ((string name, string comment) in Layout)
+            {
+                if (comment != null)
+                {
+                    lines.AddRange(comment.Split('\n'));
+                }
+                object value = typeof(Config).GetField(name).GetValue(this);
+                lines.Add(name + "=" + (value is float f ? f.ToString(CultureInfo.InvariantCulture) : value.ToString()));
+            }
+            return lines.ToArray();
+        }
+
+        private static bool TryConvert(string text, Type type, out object value)
+        {
+            value = null;
+            if (type == typeof(string))
+            {
+                value = text;
+            }
+            else if (type == typeof(bool) && bool.TryParse(text, out bool b))
+            {
+                value = b;
+            }
+            else if ((type == typeof(float) || type == typeof(int)) && float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out float f))
+            {
+                value = type == typeof(int) ? (object)(int)f : f;
+            }
+            else if (type == typeof(KeyCode))
             {
                 try
                 {
-                    return (KeyCode)Enum.Parse(typeof(KeyCode), s, true);
+                    value = Enum.Parse(typeof(KeyCode), text, true);
                 }
                 catch (ArgumentException)
                 {
                 }
             }
-            return fallback;
-        }
-
-        private static bool GetBool(Dictionary<string, string> values, string key, bool fallback)
-        {
-            return values.TryGetValue(key, out string s) && bool.TryParse(s, out bool b) ? b : fallback;
-        }
-
-        private static float GetFloat(Dictionary<string, string> values, string key, float fallback)
-        {
-            return values.TryGetValue(key, out string s) && float.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out float f) ? f : fallback;
+            return value != null;
         }
     }
 }

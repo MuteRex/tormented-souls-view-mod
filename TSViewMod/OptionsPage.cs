@@ -24,6 +24,25 @@ namespace TSViewMod
         private readonly List<Injected> m_injected = new List<Injected>();
         private readonly HashSet<int> m_tried = new HashSet<int>();
         private float m_nextScan;
+        private float m_scanUntil;
+
+        // The options menus are part of the menu and gameplay scenes, so the (costly) search for them only runs for a
+        // few seconds after each scene load.
+        private void OnEnable()
+        {
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnSceneLoaded;
+            m_scanUntil = Time.unscaledTime + 5f;
+        }
+
+        private void OnDisable()
+        {
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnSceneLoaded;
+        }
+
+        private void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode mode)
+        {
+            m_scanUntil = Time.unscaledTime + 5f;
+        }
 
         private void Update()
         {
@@ -31,8 +50,17 @@ namespace TSViewMod
             {
                 return;
             }
-            m_nextScan = Time.unscaledTime + 1f;
+            m_nextScan = Time.unscaledTime + 0.5f;
             m_injected.RemoveAll(i => i.controller == null);
+            // The menu builds its nav list when first opened, which can be long after injection: re-add ours (cheap).
+            foreach (Injected injected in m_injected)
+            {
+                EnsureNav(injected);
+            }
+            if (Time.unscaledTime > m_scanUntil)
+            {
+                return;
+            }
             foreach (OptionsMenuController controller in Resources.FindObjectsOfTypeAll<OptionsMenuController>())
             {
                 if (controller == null || !controller.gameObject.scene.IsValid() || !m_tried.Add(controller.GetInstanceID()))
@@ -47,10 +75,6 @@ namespace TSViewMod
                 {
                     Loader.Log("options page: failed in " + controller.name + ": " + e);
                 }
-            }
-            foreach (Injected injected in m_injected)
-            {
-                EnsureNav(injected);
             }
         }
 

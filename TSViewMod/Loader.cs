@@ -20,6 +20,7 @@ namespace TSViewMod
             var go = new GameObject("TSViewMod");
             UnityEngine.Object.DontDestroyOnLoad(go);
             go.AddComponent<ViewCamera>();
+            go.AddComponent<RoomBounds>();
             go.AddComponent<MapMarker>();
             go.AddComponent<InspectReset>();
             go.AddComponent<DebugTools>();

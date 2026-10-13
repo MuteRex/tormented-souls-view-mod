@@ -1,8 +1,6 @@
 using System.Collections.Generic;
 using System.Reflection;
 using Cinemachine;
-using Rewired;
-using UnityEngine.AI;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -62,6 +60,10 @@ namespace TSViewMod
         private float m_toastUntil;
         private float m_nextSearch;
 
+        private readonly CursorCapture m_cursor = new CursorCapture();
+        private readonly ScriptedAttackWatch m_scripted = new ScriptedAttackWatch();
+        private readonly VoidFill m_voidFill = new VoidFill();
+
         public static ViewCamera Instance { get; private set; }
 
         // First person is developed on the first-person branch.
@@ -109,16 +111,16 @@ namespace TSViewMod
             EnsureVirtualCamera();
 
             CinemachineVirtualCameraBase mainCamera = m_cameraManager != null ? MainVirtualCameraField?.GetValue(m_cameraManager) as CinemachineVirtualCameraBase : null;
-            bool canTakeOver = m_mode != ViewMode.Original && m_player != null && mainCamera != null && mainCamera.Priority > 0 && !InScriptedAttack();
+            bool canTakeOver = m_mode != ViewMode.Original && m_player != null && mainCamera != null && mainCamera.Priority > 0 && !m_scripted.Active(m_player, m_config.GameCameraOnGrab);
             m_vcam.Priority = canTakeOver ? mainCamera.Priority + 1 : 0;
             bool hideBody = canTakeOver && (m_mode == ViewMode.FirstPerson && m_config.HideBodyInFirstPerson || m_mode == ViewMode.ThirdPerson && m_tooClose);
             UpdateBodyVisibility(hideBody);
             CinemachineBrain brain = m_cameraManager != null ? m_cameraManager.GetBrain() : null;
             bool live = canTakeOver && brain != null && brain.ActiveVirtualCamera == (ICinemachineCamera)m_vcam;
-            UpdateVoidColour(live && m_mode == ViewMode.ThirdPerson ? brain.OutputCamera : null);
+            m_voidFill.Apply(live && m_mode == ViewMode.ThirdPerson ? brain.OutputCamera : null);
             if (!canTakeOver)
             {
-                UpdateCursorLock(false);
+                m_cursor.Update(false);
                 KeyboardMovement.Update(false, m_player != null ? m_player.GetPlayerMovement() : null);
                 m_snapNextFrame = true;
                 return;
@@ -128,7 +130,7 @@ namespace TSViewMod
             PlayerMovement movement = m_player.GetPlayerMovement();
             bool freePlay = movement == null || !movement.GamePaused;
             bool looking = live && freePlay && Time.timeScale > 0f;
-            UpdateCursorLock(looking && m_config.LockCursor && Application.isFocused);
+            m_cursor.Update(looking && m_config.LockCursor && Application.isFocused);
             KeyboardMovement.Update(looking && m_config.KeyboardCameraRelative, movement);
             if (looking)
             {
@@ -137,77 +139,9 @@ namespace TSViewMod
             PlaceCamera(brain);
         }
 
-        // Capture the pointer while walking in mod views; otherwise restore the game's mode.
-        private bool m_cursorLocked;
-        private CursorLockMode m_cursorMode;
-
-        private void UpdateCursorLock(bool want)
-        {
-            if (want && !m_cursorLocked)
-            {
-                m_cursorMode = Cursor.lockState;
-                m_cursorLocked = true;
-            }
-            else if (!want && m_cursorLocked)
-            {
-                Cursor.lockState = m_cursorMode;
-                m_cursorLocked = false;
-                return;
-            }
-            if (m_cursorLocked && Cursor.lockState != CursorLockMode.Locked)
-            {
-                Cursor.lockState = CursorLockMode.Locked;
-            }
-        }
-
         private void OnApplicationFocus(bool focused)
         {
-            if (!focused)
-            {
-                UpdateCursorLock(false);
-            }
-        }
-
-        // Grabs and deaths are animated for the fixed cameras, so the game's camera handles them.
-        private Animator m_playerAnimator;
-        private int m_animatorFlags = -1; // bit 1: has "Grabbed", bit 2: has "Dead"
-        private float m_scriptedUntil;
-
-        private bool InScriptedAttack()
-        {
-            if (!m_config.GameCameraOnGrab || m_player == null)
-            {
-                return false;
-            }
-            Animator animator = m_player.GetAnimator();
-            if (animator != m_playerAnimator)
-            {
-                m_playerAnimator = animator;
-                m_animatorFlags = -1;
-            }
-            if (animator == null || !animator.isActiveAndEnabled)
-            {
-                return false;
-            }
-            if (m_animatorFlags < 0)
-            {
-                m_animatorFlags = 0;
-                foreach (AnimatorControllerParameter parameter in animator.parameters)
-                {
-                    if (parameter.type == AnimatorControllerParameterType.Bool)
-                    {
-                        m_animatorFlags |= parameter.name == "Grabbed" ? 1 : parameter.name == "Dead" ? 2 : 0;
-                    }
-                }
-            }
-            bool scripted = (m_animatorFlags & 1) != 0 && animator.GetBool("Grabbed")
-                || (m_animatorFlags & 2) != 0 && animator.GetBool("Dead")
-                || animator.GetCurrentAnimatorStateInfo(0).IsName("Grabbed");
-            if (scripted)
-            {
-                m_scriptedUntil = Time.unscaledTime + 0.8f;
-            }
-            return Time.unscaledTime < m_scriptedUntil;
+            m_cursor.OnFocus(focused);
         }
 
         private void OnGUI()
@@ -321,7 +255,7 @@ namespace TSViewMod
             // Mouse is uncapped; the stick is capped at MaxTurnSpeed.
             float mouseX = Input.GetAxisRaw("Mouse X") * m_config.MouseSensitivity;
             float mouseY = Input.GetAxisRaw("Mouse Y") * m_config.MouseSensitivity * (m_config.MouseInvertY ? -1f : 1f);
-            Vector2 stick = RightStick();
+            Vector2 stick = PadInput.RightStick();
             float stickX = stick.x * m_config.StickSensitivity * Time.unscaledDeltaTime;
             float stickY = stick.y * m_config.StickSensitivity * 0.75f * Time.unscaledDeltaTime * (m_config.InvertY ? -1f : 1f);
             if (m_config.MaxTurnSpeed > 0f)
@@ -405,10 +339,10 @@ namespace TSViewMod
                 m_side = Mathf.SmoothDamp(m_side, m_sideTarget, ref m_sideVelocity, 0.35f, Mathf.Infinity, Time.unscaledDeltaTime);
 
                 // Spring arm from the shoulder: only the arm length changes, never the height.
-                Vector3 shoulder = ResolveCollision(m_pivot, m_pivot + rotation * new Vector3(m_config.ShoulderOffset * m_side, 0.1f, 0f), playerTransform);
+                Vector3 shoulder = CameraCollision.ResolveCollision(m_pivot, m_pivot + rotation * new Vector3(m_config.ShoulderOffset * m_side, 0.1f, 0f), playerTransform);
                 Vector3 back = rotation * Vector3.back;
                 float full = m_config.ThirdPersonDistance;
-                float target = Vector3.Distance(shoulder, Constrain(shoulder, shoulder + back * full, playerTransform));
+                float target = Vector3.Distance(shoulder, CameraCollision.Constrain(shoulder, shoulder + back * full, playerTransform));
 
                 // Pull in quickly (not in one frame), hold, then ease back out.
                 float now = Time.unscaledTime;
@@ -464,8 +398,8 @@ namespace TSViewMod
                 return;
             }
             m_sideCheckAt = Time.unscaledTime + 0.1f;
-            float here = Vector3.Distance(m_pivot, Constrain(m_pivot, m_pivot + rotation * ShoulderOffset(m_sideTarget), player));
-            float there = Vector3.Distance(m_pivot, Constrain(m_pivot, m_pivot + rotation * ShoulderOffset(-m_sideTarget), player));
+            float here = Vector3.Distance(m_pivot, CameraCollision.Constrain(m_pivot, m_pivot + rotation * ShoulderOffset(m_sideTarget), player));
+            float there = Vector3.Distance(m_pivot, CameraCollision.Constrain(m_pivot, m_pivot + rotation * ShoulderOffset(-m_sideTarget), player));
             bool squeezed = there > here + 0.5f && here < m_config.ThirdPersonDistance * 0.7f;
             if (!squeezed)
             {
@@ -487,109 +421,6 @@ namespace TSViewMod
         private Vector3 ShoulderOffset(float side)
         {
             return new Vector3(m_config.ShoulderOffset * side, 0.1f, -m_config.ThirdPersonDistance);
-        }
-
-        // Colliders first, then the walkable area: many walls have no collider and only void behind them.
-        private const float NavOverhang = 0.3f;
-
-        private static Vector3 Constrain(Vector3 pivot, Vector3 desired, Transform player)
-        {
-            Vector3 position = ResolveCollision(pivot, desired, player);
-            Vector3 arm = position - pivot;
-            float length = arm.magnitude;
-            if (length < 0.01f || !MapMarker.InsideRoom(pivot, NavOverhang))
-            {
-                return position;
-            }
-            const float step = 0.05f;
-            float allowed = 0f;
-            for (float d = step; d <= length + 1e-4f; d += step)
-            {
-                if (!MapMarker.InsideRoom(pivot + arm * (d / length), NavOverhang))
-                {
-                    break;
-                }
-                allowed = d;
-            }
-            allowed = Mathf.Min(allowed, length);
-            return pivot + arm * (Mathf.Max(allowed, 0.25f) / length);
-        }
-
-        private static Vector3 ResolveCollision(Vector3 pivot, Vector3 desired, Transform player)
-        {
-            Vector3 dir = desired - pivot;
-            float distance = dir.magnitude;
-            if (distance < 0.001f)
-            {
-                return desired;
-            }
-            dir /= distance;
-            const float radius = 0.18f;
-            float best = distance;
-            foreach (RaycastHit hit in Physics.SphereCastAll(pivot, radius, dir, distance, ~0, QueryTriggerInteraction.Ignore))
-            {
-                if (hit.collider.transform.IsChildOf(player) || hit.collider.attachedRigidbody != null && !hit.collider.attachedRigidbody.isKinematic
-                    || IgnoredByCamera(hit.collider) || WaistHigh(hit.collider, player.position.y))
-                {
-                    continue;
-                }
-                if (hit.distance < best)
-                {
-                    best = hit.distance;
-                }
-            }
-            return pivot + dir * Mathf.Max(best - 0.05f, 0.25f);
-        }
-
-        // Small props and enemies don't push the camera; walls, big furniture, floors and ceilings do.
-        private static readonly Dictionary<Collider, bool> s_ignored = new Dictionary<Collider, bool>();
-
-        private static bool IgnoredByCamera(Collider collider)
-        {
-            if (s_ignored.TryGetValue(collider, out bool ignored))
-            {
-                return ignored;
-            }
-            if (s_ignored.Count > 4096)
-            {
-                s_ignored.Clear(); // old rooms' colliders
-            }
-            Vector3 size = collider.bounds.size;
-            bool thin = size.x < 0.5f && size.z < 0.5f; // poles, legs, lamp stands
-            bool small = Mathf.Max(size.x, Mathf.Max(size.y, size.z)) < 1.2f; // boxes, chairs, carts
-            ignored = thin || small || collider.GetComponentInParent<EnemyBrain>() != null;
-            s_ignored[collider] = ignored;
-            return ignored;
-        }
-
-        // Clear to black where the set has no geometry.
-        private Camera m_voidCamera;
-        private CameraClearFlags m_voidFlags;
-        private Color m_voidColour;
-
-        private void UpdateVoidColour(Camera camera)
-        {
-            if (m_voidCamera != null && m_voidCamera != camera)
-            {
-                m_voidCamera.clearFlags = m_voidFlags;
-                m_voidCamera.backgroundColor = m_voidColour;
-                m_voidCamera = null;
-            }
-            if (camera != null && m_voidCamera == null)
-            {
-                m_voidCamera = camera;
-                m_voidFlags = camera.clearFlags;
-                m_voidColour = camera.backgroundColor;
-                camera.clearFlags = CameraClearFlags.SolidColor;
-                camera.backgroundColor = Color.black;
-            }
-        }
-
-        // Railings, tables and counters: look over them rather than pull into her head.
-        private static bool WaistHigh(Collider collider, float feet)
-        {
-            Bounds b = collider.bounds;
-            return b.size.y < 1.4f && b.max.y > feet + 0.3f && b.max.y < feet + 1.6f && b.min.y > feet - 0.6f;
         }
 
         private void UpdateBodyVisibility(bool hide)
@@ -624,57 +455,5 @@ namespace TSViewMod
             m_hiddenRenderers.Clear();
         }
 
-        // Rewired gamepad right stick, read straight from the joystick so it works whatever the game's action map says.
-        private static Vector2 RightStick()
-        {
-            Vector2 total = Vector2.zero;
-            if (!ReInput.isReady)
-            {
-                return total;
-            }
-            foreach (Joystick joystick in ReInput.controllers.Joysticks)
-            {
-                int x = FindElement(joystick, "Right Stick X");
-                int y = FindElement(joystick, "Right Stick Y");
-                if (x >= 0 && y >= 0)
-                {
-                    Vector2 v = new Vector2(joystick.GetAxisById(x), joystick.GetAxisById(y));
-                    if (v.magnitude > 0.15f)
-                    {
-                        total += v;
-                    }
-                }
-            }
-            return total;
-        }
-
-        public static bool RightStickClicked()
-        {
-            if (!ReInput.isReady)
-            {
-                return false;
-            }
-            foreach (Joystick joystick in ReInput.controllers.Joysticks)
-            {
-                int button = FindElement(joystick, "Right Stick Button");
-                if (button >= 0 && joystick.GetButtonDownById(button))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        private static int FindElement(Joystick joystick, string name)
-        {
-            foreach (ControllerElementIdentifier element in joystick.ElementIdentifiers)
-            {
-                if (element.name == name)
-                {
-                    return element.id;
-                }
-            }
-            return -1;
-        }
     }
 }
