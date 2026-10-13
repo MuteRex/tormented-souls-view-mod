@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using Cinemachine;
 using Rewired;
+using UnityEngine.AI;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -251,14 +252,14 @@ namespace TSViewMod
                 m_pivot = Vector3.Lerp(m_pivot, targetPivot, 1f - Mathf.Exp(-20f * Time.unscaledDeltaTime));
                 Vector3 offset = new Vector3(m_config.ShoulderOffset, 0.1f, -m_config.ThirdPersonDistance);
                 Vector3 desired = m_pivot + rotation * offset;
-                position = ResolveCollision(m_pivot, desired, playerTransform);
+                position = Constrain(m_pivot, desired, playerTransform);
                 float distance = Vector3.Distance(position, m_pivot);
                 if (distance < CloseDistance)
                 {
                     // A wall is pushing the camera into her: rise over the shoulder instead (up to a ceiling).
                     float k = Mathf.Clamp01((CloseDistance - distance) / 0.6f);
                     Vector3 highPivot = ResolveCollision(m_pivot, m_pivot + Vector3.up * 0.6f * k, playerTransform);
-                    Vector3 high = ResolveCollision(highPivot, highPivot + rotation * offset, playerTransform);
+                    Vector3 high = Constrain(highPivot, highPivot + rotation * offset, playerTransform);
                     if (Vector3.Distance(high, m_pivot) > distance)
                     {
                         position = high;
@@ -273,6 +274,33 @@ namespace TSViewMod
                 m_vcam.m_Lens.FarClipPlane = Mathf.Max(brain.OutputCamera.farClipPlane, 100f);
             }
             m_vcam.transform.SetPositionAndRotation(position, rotation);
+        }
+
+        // Colliders first, then the room's walkable area: some walls in this fixed-camera game have no collider,
+        // but the NavMesh always stops at them, so the camera may overhang its edge by at most NavOverhang.
+        private const float NavOverhang = 0.45f;
+
+        private static Vector3 Constrain(Vector3 pivot, Vector3 desired, Transform player)
+        {
+            Vector3 position = ResolveCollision(pivot, desired, player);
+            if (!NavMesh.SamplePosition(player.position, out NavMeshHit start, 1.5f, NavMesh.AllAreas))
+            {
+                return position; // room without a navmesh: colliders only
+            }
+            Vector3 flatTarget = new Vector3(position.x, start.position.y, position.z);
+            Vector3 flat = flatTarget - start.position;
+            float flatDistance = flat.magnitude;
+            if (flatDistance < 0.01f || !NavMesh.Raycast(start.position, flatTarget, out NavMeshHit edge, NavMesh.AllAreas))
+            {
+                return position;
+            }
+            float allowed = Vector3.Distance(start.position, edge.position) + NavOverhang;
+            if (flatDistance <= allowed)
+            {
+                return position;
+            }
+            // Pull the camera in along its own line toward the pivot until it is back over the walkable area.
+            return Vector3.Lerp(pivot, position, allowed / flatDistance);
         }
 
         private static Vector3 ResolveCollision(Vector3 pivot, Vector3 desired, Transform player)

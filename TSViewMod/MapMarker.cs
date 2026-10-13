@@ -49,8 +49,11 @@ namespace TSViewMod
             public float frontSign = 1f;
             public Vector3 upLocal;
             public bool frontKnown;
+            public bool voted;
             public float openedAt;
             public Quaternion lastRotation;
+            public Vector3 lastScale;
+            public string poseKey;
             public readonly List<RoomDot> rooms = new List<RoomDot>();
         }
 
@@ -238,7 +241,16 @@ namespace TSViewMod
                 local[marked.uAxis] = uv.x;
                 local[marked.vAxis] = uv.y;
                 local[marked.nAxis] = room.normalCoord;
-                t.position = sheet.TransformPoint(local) + front * marked.dotSize * 0.6f;
+                Vector3 world = sheet.TransformPoint(local);
+                t.position = world + front * marked.dotSize * 0.6f;
+                // Same rule as the red dot: drawn on top, so hide it when the back of the sheet faces the camera.
+                Camera viewer = MapCamera(room.highlight, world);
+                bool facing = !marked.frontKnown || viewer == null || Vector3.Dot(front, viewer.transform.position - world) > 0f;
+                Renderer r = t.GetComponent<Renderer>();
+                if (r.enabled != facing)
+                {
+                    r.enabled = facing;
+                }
                 float size = marked.dotSize * 0.6f;
                 Vector3 parentScale = t.parent != null ? t.parent.lossyScale : Vector3.one;
                 t.localScale = new Vector3(size / Safe(parentScale.x), size / Safe(parentScale.y), size / Safe(parentScale.z));
@@ -301,6 +313,15 @@ namespace TSViewMod
 
             marked.openedAt = Time.unscaledTime;
             marked.lastRotation = helper.transform.rotation;
+            marked.lastScale = helper.transform.lossyScale;
+            marked.poseKey = helper.gameObject.name + "|n" + marked.nAxis;
+            if (PoseVotes.TryGetMajority(marked.poseKey, out float knownSign, out Vector3 knownUp))
+            {
+                // Seen this map before: use the agreed pose straight away (this open still gets a vote).
+                marked.frontSign = knownSign;
+                marked.upLocal = knownUp;
+                marked.frontKnown = true;
+            }
             s_byHelper[helper] = marked;
             var pending = new List<KeyValuePair<RoomShape, RoomDot>>();
             var seenHighlights = new HashSet<GameObject>();
@@ -398,17 +419,25 @@ namespace TSViewMod
         // in-plane axis points up on screen. The dot and the inspect reset use this.
         private static void LearnFront(Marked marked)
         {
-            if (marked.frontKnown || marked.helper == null)
+            if (marked.voted || marked.helper == null)
             {
                 return;
             }
             Transform sheet = marked.helper.transform;
             float age = Time.unscaledTime - marked.openedAt;
             float turned = Quaternion.Angle(sheet.rotation, marked.lastRotation);
+            Vector3 scale = sheet.lossyScale;
+            float grew = (scale - marked.lastScale).magnitude / Mathf.Max(scale.magnitude, 1e-6f);
             marked.lastRotation = sheet.rotation;
-            bool settled = age > 0.35f && turned < 0.2f;
-            if (!settled && age < 1.5f)
+            marked.lastScale = scale;
+            // Opening animations scale the item up from zero and swing it in; wait until both have stopped.
+            bool settled = age > 0.35f && turned < 0.2f && grew < 0.002f && scale.magnitude > 1e-4f;
+            if (!settled)
             {
+                if (age > 3f)
+                {
+                    marked.voted = true; // never settled (player spinning it straight away): don't vote
+                }
                 return;
             }
             GameObject probe = marked.rooms.Count > 0 ? marked.rooms[0].highlight : marked.helper.gameObject;
@@ -418,7 +447,7 @@ namespace TSViewMod
                 return;
             }
             Vector3 normalWorld = sheet.TransformDirection(FrontNormalLocal(marked.nAxis, 1f));
-            marked.frontSign = Vector3.Dot(normalWorld, camera.transform.position - sheet.position) >= 0f ? 1f : -1f;
+            float sign = Vector3.Dot(normalWorld, camera.transform.position - sheet.position) >= 0f ? 1f : -1f;
             int upIndex = marked.uAxis;
             float upSign = 1f;
             float best = -1f;
@@ -433,9 +462,135 @@ namespace TSViewMod
                     upSign = Mathf.Sign(d);
                 }
             }
-            marked.upLocal = FrontNormalLocal(upIndex, upSign);
+            marked.voted = true;
+            PoseVotes.Add(marked.poseKey, sign, FrontNormalLocal(upIndex, upSign));
+            PoseVotes.TryGetMajority(marked.poseKey, out marked.frontSign, out marked.upLocal);
             marked.frontKnown = true;
-            Loader.Log("map marker: learned printed side " + marked.frontSign + " on axis " + marked.nAxis + ", up axis " + upIndex + (upSign > 0 ? "+" : "-") + " after " + age.ToString("0.00") + " s");
+            Loader.Log("map marker: this open saw printed side " + sign + ", up axis " + upIndex + (upSign > 0 ? "+" : "-") + " after "
+                + age.ToString("0.00") + " s; using majority " + marked.frontSign + " / " + marked.upLocal + " (" + PoseVotes.Describe(marked.poseKey) + ")");
+        }
+
+        // Votes for each map's printed side / up axis, kept across sessions in TSViewMod_mappose.txt.
+        private static class PoseVotes
+        {
+            private static Dictionary<string, Dictionary<string, int>> s_votes;
+
+            private static string FilePath => System.IO.Path.Combine(Application.dataPath, "TSViewMod_mappose.txt");
+
+            private static string Encode(float sign, Vector3 up)
+            {
+                int axis = up.x != 0f ? 0 : up.y != 0f ? 1 : 2;
+                return (sign > 0f ? "+" : "-") + "," + axis + "," + (up[axis] > 0f ? "+" : "-");
+            }
+
+            public static void Add(string key, float sign, Vector3 up)
+            {
+                Load();
+                if (!s_votes.TryGetValue(key, out Dictionary<string, int> tally))
+                {
+                    tally = new Dictionary<string, int>();
+                    s_votes[key] = tally;
+                }
+                string v = Encode(sign, up);
+                tally.TryGetValue(v, out int n);
+                tally[v] = n + 1;
+                Save();
+            }
+
+            public static bool TryGetMajority(string key, out float sign, out Vector3 up)
+            {
+                Load();
+                sign = 1f;
+                up = Vector3.zero;
+                if (!s_votes.TryGetValue(key, out Dictionary<string, int> tally) || tally.Count == 0)
+                {
+                    return false;
+                }
+                string best = null;
+                int bestCount = -1;
+                foreach (KeyValuePair<string, int> pair in tally)
+                {
+                    if (pair.Value > bestCount)
+                    {
+                        best = pair.Key;
+                        bestCount = pair.Value;
+                    }
+                }
+                string[] f = best.Split(',');
+                sign = f[0] == "+" ? 1f : -1f;
+                up = FrontNormalLocal(int.Parse(f[1]), f[2] == "+" ? 1f : -1f);
+                return true;
+            }
+
+            public static string Describe(string key)
+            {
+                Load();
+                if (!s_votes.TryGetValue(key, out Dictionary<string, int> tally))
+                {
+                    return "no votes";
+                }
+                var parts = new List<string>();
+                foreach (KeyValuePair<string, int> pair in tally)
+                {
+                    parts.Add(pair.Key + " x" + pair.Value);
+                }
+                return string.Join("; ", parts.ToArray());
+            }
+
+            private static void Load()
+            {
+                if (s_votes != null)
+                {
+                    return;
+                }
+                s_votes = new Dictionary<string, Dictionary<string, int>>();
+                try
+                {
+                    if (!System.IO.File.Exists(FilePath))
+                    {
+                        return;
+                    }
+                    foreach (string line in System.IO.File.ReadAllLines(FilePath))
+                    {
+                        string[] f = line.Split('\t');
+                        if (f.Length != 3 || line.StartsWith("#"))
+                        {
+                            continue;
+                        }
+                        if (!s_votes.TryGetValue(f[0], out Dictionary<string, int> tally))
+                        {
+                            tally = new Dictionary<string, int>();
+                            s_votes[f[0]] = tally;
+                        }
+                        tally[f[1]] = int.Parse(f[2]);
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Loader.Log("map pose votes unreadable, starting over: " + e.Message);
+                    s_votes.Clear();
+                }
+            }
+
+            private static void Save()
+            {
+                try
+                {
+                    var lines = new List<string> { "# TSViewMod: which side of each map is printed / which way is up. Delete to relearn." };
+                    foreach (KeyValuePair<string, Dictionary<string, int>> map in s_votes)
+                    {
+                        foreach (KeyValuePair<string, int> vote in map.Value)
+                        {
+                            lines.Add(map.Key + "\t" + vote.Key + "\t" + vote.Value);
+                        }
+                    }
+                    System.IO.File.WriteAllLines(FilePath, lines);
+                }
+                catch (System.Exception e)
+                {
+                    Loader.Log("map pose votes not saved: " + e.Message);
+                }
+            }
         }
 
         // For the inspect reset: printed-side normal and screen-up axis in the sheet's local space, once learned.
@@ -936,7 +1091,7 @@ namespace TSViewMod
             {
                 return null;
             }
-            bool[] mask = DrawMask(filter.sharedMesh, room.highlight.transform.localToWorldMatrix, map, square, u, v, n);
+            bool[] mask = DrawMask(filter.sharedMesh, RelativeMatrix(map, room.highlight.transform), map, square, u, v, n);
             if (mask == null)
             {
                 return null;
@@ -977,7 +1132,9 @@ namespace TSViewMod
             swizzle[1, v] = 1f;
             swizzle[2, n] = 1f;
             swizzle[3, 3] = 1f;
-            Matrix4x4 view = swizzle * map.worldToLocalMatrix;
+            // The mesh is given in the map's local space (RelativeMatrix), so "world" here is map-local and the
+            // result doesn't depend on the opening animation's scale or the sheet's current rotation.
+            Matrix4x4 view = swizzle;
             Matrix4x4 proj = Matrix4x4.Ortho(square.min.x, square.max.x, square.min.y, square.max.y, -10000f, 10000f);
 
             if (m_flipChecked == 0)
@@ -1041,7 +1198,7 @@ namespace TSViewMod
                 Vector3 local = Vector3.zero;
                 local[u] = Mathf.Lerp(square.min.x, square.max.x, fu);
                 local[v] = Mathf.Lerp(square.min.y, square.max.y, fv);
-                return map.TransformPoint(local);
+                return local;
             }
             mesh.vertices = new[] { Corner(0f, 0f), Corner(1f, 0f), Corner(1f, 0.25f), Corner(0f, 0.25f) };
             mesh.triangles = new[] { 0, 1, 2, 0, 2, 3 };
@@ -1157,6 +1314,19 @@ namespace TSViewMod
         }
 
         // Highlight mesh bounds in the map's local space (mesh bounds work even when the mesh is not readable).
+        // highlight -> map transform built from local TRS only, so it stays valid while the map's parent is scaled
+        // to zero by the game's opening animation (world-space round trips would divide by zero there).
+        public static Matrix4x4 RelativeMatrix(Transform root, Transform t)
+        {
+            Matrix4x4 m = Matrix4x4.identity;
+            for (Transform x = t; x != null && x != root; x = x.parent)
+            {
+                m = Matrix4x4.TRS(x.localPosition, x.localRotation, x.localScale) * m;
+            }
+            return m;
+        }
+
+        // Highlight mesh bounds in the map's local space (mesh bounds work even when the mesh is not readable).
         private static bool TryLocalBounds(Transform map, GameObject highlight, out Bounds bounds)
         {
             bounds = default;
@@ -1165,11 +1335,12 @@ namespace TSViewMod
             {
                 return false;
             }
+            Matrix4x4 rel = RelativeMatrix(map, highlight.transform);
             Bounds meshBounds = filter.sharedMesh.bounds;
             for (int i = 0; i < 8; i++)
             {
                 Vector3 corner = meshBounds.center + Vector3.Scale(meshBounds.extents, new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
-                Vector3 local = map.InverseTransformPoint(highlight.transform.TransformPoint(corner));
+                Vector3 local = rel.MultiplyPoint3x4(corner);
                 if (i == 0)
                 {
                     bounds = new Bounds(local, Vector3.zero);

@@ -96,3 +96,13 @@ Goal: toggleable third-person / first-person camera + red "you are here" marker 
 - Versioning rule (user, from v0.9.0): +0.1 only when the user confirms a fix works; otherwise patch bumps
   inside the current step (0.9.0 -> 0.9.1 -> 0.9.2 ...).
 - v1.0.0: user confirmed the v0.9.0 fixes (door-weighted fit puts the dot on the Delivery Room side; door markers verified). Same code as 0.9.0, version bumped per rule.
+- v1.0.1 (video 02-36-10 review):
+  * Camera passed through walls with no collider (Corridor_1C, overlay distance 2.08 = unobstructed). Constrain():
+    colliders, then NavMesh.Raycast from the player's navmesh point toward the camera's XZ; camera may overhang the
+    walkable edge by 0.45 m, else pulled in along its line to the pivot. Rooms without navmesh: colliders only.
+  * Map pose learned wrong on 2 of 12 opens ("side -1"; "axis 0") — map opened from inventory flies in flat and
+    the opening animation scales from 0, so world-space bounds/round trips were degenerate. Now all map-space maths
+    use RelativeMatrix (local TRS chain highlight->map) and the mask view is map-local; learning waits for rotation
+    AND scale to settle (gives up after 3 s); each open votes and the majority per map (name|nAxis) is used and
+    persisted in TormentedSouls_Data/TSViewMod_mappose.txt.
+  * Debug door dots hidden when the sheet's back faces the camera.
