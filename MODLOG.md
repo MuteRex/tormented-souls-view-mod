@@ -93,3 +93,5 @@ Goal: toggleable third-person / first-person camera + red "you are here" marker 
   * Debug tools: F8 overlay (scene, pos, free play, view/yaw/pitch/distance, mod cam priority/live, active vcam,
     map fit + player uv raw/snapped), blue door markers on the map while the overlay is on, F9 screenshot + state to
     <game>/TSViewMod_debug/. Orient/inverse math verified offline (8 distinct, exact inverse).
+- Versioning rule (user, from v0.9.0): +0.1 only when the user confirms a fix works; otherwise patch bumps
+  inside the current step (0.9.0 -> 0.9.1 -> 0.9.2 ...).
