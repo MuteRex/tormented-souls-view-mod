@@ -72,3 +72,8 @@ Goal: toggleable third-person / first-person camera + red "you are here" marker 
   sheet meshes (FrontSign, logged); reset faces that side to the camera that renders the highlight layer; dot lifted
   along the front normal, drawn with Hidden/Internal-Colored ZTest Always (queue 4000), hidden when the sheet's back
   faces the camera, and clamped into the current room's rect (stairs/landings can map past the outline).
+- v0.7.0 (user video untitled.mp4, log "front sign -1"): the mesh-depth FrontSign heuristic picked the BACK, so the dot
+  hid itself (back-facing check) and reset still showed the R/F back page. Replaced with LearnFront: the game opens
+  the map printed side toward the viewer, so ~0.35 s after open (rotation settled, or 1.5 s max) record which side of
+  the sheet faces the map camera and which in-plane axis points up on screen. Dot hiding and the reset both use it;
+  reset falls back to m_initialRot until learned. Logged as "learned printed side ...".

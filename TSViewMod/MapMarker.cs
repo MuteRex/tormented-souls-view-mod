@@ -44,6 +44,10 @@ namespace TSViewMod
             public int nAxis;
             public float dotSize;
             public float frontSign = 1f;
+            public Vector3 upLocal;
+            public bool frontKnown;
+            public float openedAt;
+            public Quaternion lastRotation;
             public readonly List<RoomDot> rooms = new List<RoomDot>();
         }
 
@@ -74,6 +78,21 @@ namespace TSViewMod
             }
 
             m_marked.RemoveAll(m => m.helper == null);
+            if (s_byHelper.Count > 0 && s_byHelper.Count != m_marked.Count)
+            {
+                var dead = new List<MapHelperRoom>();
+                foreach (MapHelperRoom key in s_byHelper.Keys)
+                {
+                    if (key == null)
+                    {
+                        dead.Add(key);
+                    }
+                }
+                foreach (MapHelperRoom key in dead)
+                {
+                    s_byHelper.Remove(key);
+                }
+            }
             if (Time.unscaledTime >= m_nextScan)
             {
                 m_nextScan = Time.unscaledTime + 0.25f;
@@ -101,6 +120,7 @@ namespace TSViewMod
             float pulse = 1f + 0.25f * Mathf.Sin(Time.unscaledTime * 6f);
             foreach (Marked marked in m_marked)
             {
+                LearnFront(marked);
                 foreach (RoomDot room in marked.rooms)
                 {
                     if (room.dot == null)
@@ -136,7 +156,7 @@ namespace TSViewMod
                     room.dot.position = world + front * marked.dotSize * 0.6f;
                     // Drawn on top of everything, so hide it when the sheet is turned to its back.
                     Camera viewer = MapCamera(room.highlight, world);
-                    bool facing = viewer == null || Vector3.Dot(front, viewer.transform.position - world) > 0f;
+                    bool facing = !marked.frontKnown || viewer == null || Vector3.Dot(front, viewer.transform.position - world) > 0f;
                     Renderer dotRenderer = room.dot.GetComponent<Renderer>();
                     if (dotRenderer.enabled != facing)
                     {
@@ -203,7 +223,9 @@ namespace TSViewMod
             marked.vAxis = marked.nAxis == 2 ? 1 : 2;
             marked.dotSize = Mathf.Max(Mathf.Max(spread[marked.uAxis], spread[marked.vAxis]) * 0.03f, 0.002f);
 
-            marked.frontSign = FrontSign(helper, marked.nAxis);
+            marked.openedAt = Time.unscaledTime;
+            marked.lastRotation = helper.transform.rotation;
+            s_byHelper[helper] = marked;
             var pending = new List<KeyValuePair<RoomShape, RoomDot>>();
             var seenHighlights = new HashSet<GameObject>();
             foreach (RoomShape room in rooms)
@@ -285,39 +307,65 @@ namespace TSViewMod
             }
         }
 
-        // +1 or -1: which way along the sheet's normal axis the printed side (with the room highlights) faces.
-        // The highlights sit just above the paper, so compare their depth with the rest of the sheet's meshes.
-        public static float FrontSign(MapHelperRoom helper, int normal)
+        private static readonly Dictionary<MapHelperRoom, Marked> s_byHelper = new Dictionary<MapHelperRoom, Marked>();
+
+        // The game always opens the map printed side toward the viewer, upright. Once the opening animation has
+        // settled (and before the player has had time to spin it) record which side faces the map camera and which
+        // in-plane axis points up on screen. The dot and the inspect reset use this.
+        private static void LearnFront(Marked marked)
         {
-            var highlights = new HashSet<GameObject>();
-            float highlightSum = 0f;
-            int highlightCount = 0;
-            foreach (MapHelperStringToGameObject entry in helper.sceneToGameObjects)
+            if (marked.frontKnown || marked.helper == null)
             {
-                if (entry != null && entry.highlight != null && highlights.Add(entry.highlight) && TryLocalBounds(helper.transform, entry.highlight, out Bounds b))
+                return;
+            }
+            Transform sheet = marked.helper.transform;
+            float age = Time.unscaledTime - marked.openedAt;
+            float turned = Quaternion.Angle(sheet.rotation, marked.lastRotation);
+            marked.lastRotation = sheet.rotation;
+            bool settled = age > 0.35f && turned < 0.2f;
+            if (!settled && age < 1.5f)
+            {
+                return;
+            }
+            GameObject probe = marked.rooms.Count > 0 ? marked.rooms[0].highlight : marked.helper.gameObject;
+            Camera camera = MapCamera(probe, sheet.position);
+            if (camera == null)
+            {
+                return;
+            }
+            Vector3 normalWorld = sheet.TransformDirection(FrontNormalLocal(marked.nAxis, 1f));
+            marked.frontSign = Vector3.Dot(normalWorld, camera.transform.position - sheet.position) >= 0f ? 1f : -1f;
+            int upIndex = marked.uAxis;
+            float upSign = 1f;
+            float best = -1f;
+            foreach (int i in new[] { marked.uAxis, marked.vAxis })
+            {
+                Vector3 axisWorld = sheet.TransformDirection(FrontNormalLocal(i, 1f)).normalized;
+                float d = Vector3.Dot(axisWorld, camera.transform.up);
+                if (Mathf.Abs(d) > best)
                 {
-                    highlightSum += b.center[normal];
-                    highlightCount++;
+                    best = Mathf.Abs(d);
+                    upIndex = i;
+                    upSign = Mathf.Sign(d);
                 }
             }
-            float paperSum = 0f;
-            int paperCount = 0;
-            foreach (MeshFilter filter in helper.GetComponentsInChildren<MeshFilter>(true))
+            marked.upLocal = FrontNormalLocal(upIndex, upSign);
+            marked.frontKnown = true;
+            Loader.Log("map marker: learned printed side " + marked.frontSign + " on axis " + marked.nAxis + ", up axis " + upIndex + (upSign > 0 ? "+" : "-") + " after " + age.ToString("0.00") + " s");
+        }
+
+        // For the inspect reset: printed-side normal and screen-up axis in the sheet's local space, once learned.
+        public static bool TryGetSheetPose(MapHelperRoom helper, out Vector3 faceLocal, out Vector3 upLocal)
+        {
+            faceLocal = Vector3.zero;
+            upLocal = Vector3.zero;
+            if (helper == null || !s_byHelper.TryGetValue(helper, out Marked marked) || !marked.frontKnown)
             {
-                if (filter.sharedMesh == null || highlights.Contains(filter.gameObject) || filter.name == "TSViewMod_MapDot")
-                {
-                    continue;
-                }
-                Bounds mb = filter.sharedMesh.bounds;
-                paperSum += helper.transform.InverseTransformPoint(filter.transform.TransformPoint(mb.center))[normal];
-                paperCount++;
+                return false;
             }
-            if (highlightCount == 0 || paperCount == 0)
-            {
-                return 1f;
-            }
-            float diff = highlightSum / highlightCount - paperSum / paperCount;
-            return diff < 0f ? -1f : 1f;
+            faceLocal = FrontNormalLocal(marked.nAxis, marked.frontSign);
+            upLocal = marked.upLocal;
+            return true;
         }
 
         public static Vector3 FrontNormalLocal(int normal, float sign)

@@ -87,38 +87,16 @@ namespace TSViewMod
             }
         }
 
-        // Rotation for the pivot that lays the map sheet flat toward the camera, printed side up, upright as it opened.
+        // Rotation for the pivot that turns the map's printed side flat toward the camera, upright — the pose the
+        // game opened it in (learned by MapMarker), minus any tilt.
         private static Quaternion FaceViewer(Transform pivot, Quaternion initial, MapHelperRoom map, Transform camera)
         {
             Transform sheet = map.transform;
-            int normal = MapMarker.NormalAxis(map);
-            Vector3 faceLocal = MapMarker.FrontNormalLocal(normal, MapMarker.FrontSign(map, normal));
-            Quaternion current = pivot.rotation;
-
-            // "Up" is the in-plane axis that pointed most upward on screen when the item opened.
-            pivot.rotation = initial;
-            int upIndex = -1;
-            float upSign = 1f;
-            float bestDot = -1f;
-            for (int i = 0; i < 3; i++)
+            if (!MapMarker.TryGetSheetPose(map, out Vector3 faceLocal, out Vector3 upLocal))
             {
-                if (i == normal)
-                {
-                    continue;
-                }
-                float d = Vector3.Dot(Axis(sheet, i), camera.up);
-                if (Mathf.Abs(d) > bestDot)
-                {
-                    bestDot = Mathf.Abs(d);
-                    upIndex = i;
-                    upSign = Mathf.Sign(d);
-                }
+                return initial;
             }
-            Vector3 upLocal = Vector3.zero;
-            upLocal[upIndex] = upSign;
-            pivot.rotation = current;
-
-            // Delta that takes the sheet's printed face/up onto camera-facing/camera-up, applied to the pivot.
+            Quaternion current = pivot.rotation;
             Vector3 faceNow = sheet.TransformDirection(faceLocal);
             Vector3 upNow = sheet.TransformDirection(upLocal);
             Quaternion from = Quaternion.LookRotation(faceNow, upNow);
