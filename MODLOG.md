@@ -146,3 +146,4 @@ Offline room extraction: precompute world->map fits for every room so unvisited 
   BigHall x4 sheets. No fit: Pharmacy (strict probe 17 cells), Bathroom_E (1 cell).
 - v1.0.5: bug fixed: fits made with the prior that still differ were dropped on every load (constant refits); cache
   lines now carry 'p' (withPrior) and those are trusted. Relaxed floor probe (no headroom checks) when strict < 20 cells.
+- v1.0.6: pad Reset View prompt gets a generated down-arrow over the analogR icon (game has no R3/stick-click sprite), tinted like the bar label.

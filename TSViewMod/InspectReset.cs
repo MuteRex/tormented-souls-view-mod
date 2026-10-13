@@ -141,6 +141,7 @@ namespace TSViewMod
             public Sprite keyboardBackground;
             public Image rotateIcon;
             public SwapSpriteControls rotateSwap;
+            public Image pressArrow;
         }
 
         private readonly Dictionary<GameObject, Prompt> m_prompts = new Dictionary<GameObject, Prompt>();
@@ -188,13 +189,72 @@ namespace TSViewMod
             {
                 SetSprite(prompt.icon, prompt.rotateIcon.sprite);
                 SetText(prompt.key, "");
+                SetActive(prompt.pressArrow, true);
             }
             else
             {
                 SetSprite(prompt.icon, prompt.keyboardBackground);
                 SetText(prompt.key, KeyLabel(config.ResetRotationKey));
+                SetActive(prompt.pressArrow, false);
             }
             SetText(prompt.label, "Reset View");
+        }
+
+        private static void SetActive(Image image, bool active)
+        {
+            if (image != null && image.gameObject.activeSelf != active)
+            {
+                image.gameObject.SetActive(active);
+            }
+        }
+
+        // The game has no "click the stick" icon, so the right-stick icon gets a small arrow pressing down on it,
+        // tinted like the bar's text.
+        private static Sprite s_arrowSprite;
+
+        private static Image CreatePressArrow(Image icon, Color color)
+        {
+            if (icon == null)
+            {
+                return null;
+            }
+            if (s_arrowSprite == null)
+            {
+                const int size = 64;
+                var texture = new Texture2D(size, size, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+                var pixels = new Color32[size * size];
+                for (int y = 0; y < size; y++)
+                {
+                    for (int x = 0; x < size; x++)
+                    {
+                        // Downward chevron: stem on top, triangle head below (row 0 = bottom).
+                        float cx = Mathf.Abs(x + 0.5f - size * 0.5f);
+                        bool stem = y >= size * 0.55f && cx <= size * 0.11f;
+                        bool head = y < size * 0.55f && cx <= (y + 0.5f) * 0.9f;
+                        byte a = (byte)(stem || head ? 255 : 0);
+                        pixels[y * size + x] = new Color32(255, 255, 255, a);
+                    }
+                }
+                texture.SetPixels32(pixels);
+                texture.Apply(false, true);
+                s_arrowSprite = Sprite.Create(texture, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+            }
+            var go = new GameObject("TSViewMod_PressArrow", typeof(RectTransform), typeof(Image));
+            var rect = (RectTransform)go.transform;
+            rect.SetParent(icon.transform, false);
+            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 1f);
+            rect.pivot = new Vector2(0.5f, 0f);
+            float iconHeight = icon.rectTransform.rect.height > 1f ? icon.rectTransform.rect.height : 40f;
+            rect.anchoredPosition = new Vector2(0f, -0.12f * iconHeight);
+            float side = iconHeight * 0.5f;
+            rect.sizeDelta = new Vector2(side, side);
+            Image image = go.GetComponent<Image>();
+            image.sprite = s_arrowSprite;
+            image.color = color;
+            image.raycastTarget = false;
+            image.preserveAspect = true;
+            go.SetActive(false);
+            return image;
         }
 
         private static string KeyLabel(KeyCode key)
@@ -281,6 +341,7 @@ namespace TSViewMod
                     DestroyImmediate(behaviour);
                 }
             }
+            prompt.pressArrow = CreatePressArrow(prompt.icon, prompt.label != null ? prompt.label.color : Color.white);
             Loader.Log("button bar: added Reset View prompt in " + state.name + (rotate != null ? " (pad icon from Rotate)" : " (keyboard icon only)"));
             return prompt;
         }
