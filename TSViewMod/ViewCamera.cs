@@ -47,11 +47,13 @@ namespace TSViewMod
         private float m_side = 1f;
         private float m_sideTarget = 1f;
         private float m_sideCheckAt;
+        private float m_sideVelocity;
+        private float m_distanceVelocity;
+        private float m_blockedSince = -1f;
+        private float m_lastSwap = -10f;
 
-        // Below CloseDistance from the pivot the camera rises over the shoulder; below FadeDistance she is hidden
-        // (shadow only) rather than letting the camera sit inside her head.
-        private const float CloseDistance = 0.9f;
-        private const float FadeDistance = 0.5f;
+        // When the arm is shorter than FadeDistance she is hidden (shadow only) rather than filling the screen.
+        private const float FadeDistance = 0.35f;
 
         private readonly List<KeyValuePair<Renderer, ShadowCastingMode>> m_hiddenRenderers = new List<KeyValuePair<Renderer, ShadowCastingMode>>();
 
@@ -60,6 +62,10 @@ namespace TSViewMod
         private float m_nextSearch;
 
         public static ViewCamera Instance { get; private set; }
+
+        // First person is parked on the first-person branch (own version line) until it's good enough.
+        public const bool FirstPersonAvailable = false;
+        public const string FirstPersonVersion = "0.1.0";
 
         public Config Config => m_config;
 
@@ -77,8 +83,19 @@ namespace TSViewMod
             bool r3 = m_config.ControllerR3CyclesView && InFreePlay() && RightStickClicked();
             if (Input.GetKeyDown(m_config.CycleViewKey) || r3)
             {
-                SetMode((ViewMode)(((int)m_mode + 1) % 3));
+                SetMode(Next(m_mode, 1));
             }
+        }
+
+        // Cycles Original -> Third -> First, skipping first person while it isn't available.
+        public static ViewMode Next(ViewMode mode, int direction)
+        {
+            ViewMode next = (ViewMode)(((int)mode + direction + 3) % 3);
+            if (next == ViewMode.FirstPerson && !FirstPersonAvailable)
+            {
+                next = (ViewMode)(((int)next + direction + 3) % 3);
+            }
+            return next;
         }
 
         private bool InFreePlay()
@@ -168,7 +185,7 @@ namespace TSViewMod
                     return ViewMode.ThirdPerson;
                 case "firstperson":
                 case "first":
-                    return ViewMode.FirstPerson;
+                    return FirstPersonAvailable ? ViewMode.FirstPerson : ViewMode.ThirdPerson;
                 default:
                     return ViewMode.Original;
             }
@@ -262,63 +279,45 @@ namespace TSViewMod
                 // Smooth the pivot: the player is a non-interpolated rigidbody, so its rendered position steps.
                 Vector3 targetPivot = playerTransform.position + Vector3.up * m_config.PivotHeight;
                 m_pivot = Vector3.Lerp(m_pivot, targetPivot, 1f - Mathf.Exp(-20f * Time.unscaledDeltaTime));
-                if (string.Equals(m_config.ShoulderSide, "Right", System.StringComparison.OrdinalIgnoreCase))
+                UpdateShoulderSide(rotation, playerTransform);
+                m_side = Mathf.SmoothDamp(m_side, m_sideTarget, ref m_sideVelocity, 0.35f, Mathf.Infinity, Time.unscaledDeltaTime);
+
+                // Spring arm, the way RE-style shoulder cameras work: the camera keeps a fixed offset in its own
+                // space (no height changes), and only its distance along the arm changes. The arm starts at the
+                // shoulder, so a blocked camera slides in toward the shoulder rather than toward the head.
+                Vector3 shoulder = ResolveCollision(m_pivot, m_pivot + rotation * new Vector3(m_config.ShoulderOffset * m_side, 0.1f, 0f), playerTransform);
+                Vector3 back = rotation * Vector3.back;
+                float full = m_config.ThirdPersonDistance;
+                float target = Vector3.Distance(shoulder, Constrain(shoulder, shoulder + back * full, playerTransform));
+
+                // Pull in fast but not in one frame (stops single-frame pops from props and edges), never letting the
+                // camera sit behind the obstacle for more than a moment; ease back out only after a short hold.
+                float now = Time.unscaledTime;
+                float dt = Mathf.Max(Time.unscaledDeltaTime, 1e-4f);
+                if (m_smoothDistance < 0f)
                 {
-                    m_sideTarget = 1f;
+                    m_smoothDistance = target;
+                    m_distanceVelocity = 0f;
                 }
-                else if (string.Equals(m_config.ShoulderSide, "Left", System.StringComparison.OrdinalIgnoreCase))
+                else if (target < m_smoothDistance)
                 {
-                    m_sideTarget = -1f;
-                }
-                else if (Time.unscaledTime >= m_sideCheckAt)
-                {
-                    m_sideCheckAt = Time.unscaledTime + 0.1f;
-                    float here = Vector3.Distance(m_pivot, Constrain(m_pivot, m_pivot + rotation * ShoulderOffset(m_sideTarget), playerTransform));
-                    float there = Vector3.Distance(m_pivot, Constrain(m_pivot, m_pivot + rotation * ShoulderOffset(-m_sideTarget), playerTransform));
-                    if (there > here + 0.35f)
+                    if (target < m_smoothDistance - 0.03f)
                     {
-                        m_sideTarget = -m_sideTarget;
+                        m_holdUntil = now + ReturnDelay;
                     }
+                    m_smoothDistance = Mathf.Max(target, Mathf.SmoothDamp(m_smoothDistance, target, ref m_distanceVelocity, 0.05f, Mathf.Infinity, dt));
+                    m_smoothDistance = Mathf.Min(m_smoothDistance, target + 0.25f); // never more than 25 cm "inside"
                 }
-                m_side = Mathf.MoveTowards(m_side, m_sideTarget, Time.unscaledDeltaTime * 4f);
-                Vector3 offset = ShoulderOffset(m_side);
-                Vector3 desired = m_pivot + rotation * offset;
-                position = Constrain(m_pivot, desired, playerTransform);
-                float distance = Vector3.Distance(position, m_pivot);
-                if (distance < CloseDistance)
+                else if (now >= m_holdUntil)
                 {
-                    // A wall is pushing the camera into her: rise over the shoulder instead (up to a ceiling).
-                    float k = Mathf.Clamp01((CloseDistance - distance) / 0.6f);
-                    Vector3 highPivot = ResolveCollision(m_pivot, m_pivot + Vector3.up * 0.6f * k, playerTransform);
-                    Vector3 high = Constrain(highPivot, highPivot + rotation * offset, playerTransform);
-                    if (Vector3.Distance(high, m_pivot) > distance)
-                    {
-                        position = high;
-                        distance = Vector3.Distance(high, m_pivot);
-                    }
+                    m_smoothDistance = Mathf.SmoothDamp(m_smoothDistance, target, ref m_distanceVelocity, 0.45f, ReturnSpeed, dt);
                 }
-                // Pull in instantly (never clip), but wait a moment and ease back out, so passing props and
-                // doorframes don't make the camera pump in and out.
-                Vector3 toCamera = position - m_pivot;
-                if (toCamera.sqrMagnitude > 1e-6f)
+                else
                 {
-                    float now = Time.unscaledTime;
-                    if (m_smoothDistance < 0f || distance <= m_smoothDistance)
-                    {
-                        if (m_smoothDistance >= 0f && distance < m_smoothDistance - 0.02f)
-                        {
-                            m_holdUntil = now + ReturnDelay;
-                        }
-                        m_smoothDistance = distance;
-                    }
-                    else if (now >= m_holdUntil)
-                    {
-                        m_smoothDistance = Mathf.MoveTowards(m_smoothDistance, distance, ReturnSpeed * Time.unscaledDeltaTime * (1f + (distance - m_smoothDistance)));
-                    }
-                    position = m_pivot + toCamera.normalized * m_smoothDistance;
-                    distance = m_smoothDistance;
+                    m_distanceVelocity = 0f;
                 }
-                m_tooClose = distance < FadeDistance;
+                position = shoulder + back * m_smoothDistance;
+                m_tooClose = m_smoothDistance < FadeDistance;
                 m_vcam.m_Lens.FieldOfView = m_config.FieldOfView;
             }
             if (brain != null && brain.OutputCamera != null)
@@ -326,6 +325,45 @@ namespace TSViewMod
                 m_vcam.m_Lens.FarClipPlane = Mathf.Max(brain.OutputCamera.farClipPlane, 100f);
             }
             m_vcam.transform.SetPositionAndRotation(position, rotation);
+        }
+
+        // Auto shoulder: swap only when the current side has been clearly squeezed for a while and the other side
+        // really has room, with a cooldown, so walking past furniture doesn't flip the camera back and forth.
+        private void UpdateShoulderSide(Quaternion rotation, Transform player)
+        {
+            if (string.Equals(m_config.ShoulderSide, "Right", System.StringComparison.OrdinalIgnoreCase))
+            {
+                m_sideTarget = 1f;
+                return;
+            }
+            if (string.Equals(m_config.ShoulderSide, "Left", System.StringComparison.OrdinalIgnoreCase))
+            {
+                m_sideTarget = -1f;
+                return;
+            }
+            if (Time.unscaledTime < m_sideCheckAt)
+            {
+                return;
+            }
+            m_sideCheckAt = Time.unscaledTime + 0.1f;
+            float here = Vector3.Distance(m_pivot, Constrain(m_pivot, m_pivot + rotation * ShoulderOffset(m_sideTarget), player));
+            float there = Vector3.Distance(m_pivot, Constrain(m_pivot, m_pivot + rotation * ShoulderOffset(-m_sideTarget), player));
+            bool squeezed = there > here + 0.5f && here < m_config.ThirdPersonDistance * 0.7f;
+            if (!squeezed)
+            {
+                m_blockedSince = -1f;
+                return;
+            }
+            if (m_blockedSince < 0f)
+            {
+                m_blockedSince = Time.unscaledTime;
+            }
+            if (Time.unscaledTime - m_blockedSince > 0.4f && Time.unscaledTime - m_lastSwap > 1.5f)
+            {
+                m_sideTarget = -m_sideTarget;
+                m_lastSwap = Time.unscaledTime;
+                m_blockedSince = -1f;
+            }
         }
 
         private Vector3 ShoulderOffset(float side)

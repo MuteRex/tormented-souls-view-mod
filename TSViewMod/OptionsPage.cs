@@ -235,6 +235,7 @@ namespace TSViewMod
         }
 
         private readonly List<Row> m_rows = new List<Row>();
+        private static bool s_comingSoon;
         private readonly List<INavItem> m_nav = new List<INavItem>();
 
         private static Config Cfg => ViewCamera.Instance != null ? ViewCamera.Instance.Config : null;
@@ -289,11 +290,17 @@ namespace TSViewMod
         {
             var defs = new List<KeyValuePair<string, Row>>
             {
-                Def("Camera", () => Cfg == null ? "-" : ModeName(ViewCamera.Instance.Mode), d =>
+                // First person is listed but not selectable yet: landing on it shows "Coming Soon" and keeps the camera.
+                Def("Camera", () => s_comingSoon ? "First Person (Coming Soon)" : ModeName(ViewCamera.Instance.Mode), d =>
                 {
-                    ViewMode mode = (ViewMode)(((int)ViewCamera.Instance.Mode + d + 3) % 3);
-                    ViewCamera.Instance.SetMode(mode);
-                    Cfg.StartView = mode.ToString();
+                    ViewMode current = s_comingSoon ? ViewMode.FirstPerson : ViewCamera.Instance.Mode;
+                    ViewMode mode = (ViewMode)(((int)current + d + 3) % 3);
+                    s_comingSoon = mode == ViewMode.FirstPerson && !ViewCamera.FirstPersonAvailable;
+                    if (!s_comingSoon)
+                    {
+                        ViewCamera.Instance.SetMode(mode);
+                        Cfg.StartView = mode.ToString();
+                    }
                 }),
                 // Same short-label style and density as the game's own pages; rarer settings stay in TSViewMod.cfg.
                 Def("Distance", () => Level(Cfg.ThirdPersonDistance, 0.8f, 0.2f), d => Cfg.ThirdPersonDistance = Step(Cfg.ThirdPersonDistance, d, 0.2f, 0.8f, 2.6f)),
@@ -391,6 +398,11 @@ namespace TSViewMod
         {
             base.InitialSetup();
             SetNavItems(m_nav);
+        }
+
+        protected override void OnEnter()
+        {
+            s_comingSoon = false;
         }
 
         public override INavItem GetMainNavItem()

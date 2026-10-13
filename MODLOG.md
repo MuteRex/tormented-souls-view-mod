@@ -162,3 +162,10 @@ Offline room extraction: precompute world->map fits for every room so unvisited 
   Config.ShoulderSide (Auto/Right/Left); map marker follows config.MapMarker. Needs Sirenix.Serialization ref
   (NavItemButton : SerializedMonoBehaviour). Logs a hierarchy dump on injection for layout fixes. Untested.
 - v1.0.10: page redesign after user feedback ('looks like shit'): ◀ ▶ button texts were overwritten with labels (only non-button, non-value text is the label now); 10 short rows (Camera, Distance, Height, Shoulder, Field of View, Sensitivity, Invert Y, R3 Camera Switch, Map Marker, Reset View), 1-10 levels instead of metres; rows live in a GridLayoutGroup (Scaled Down), spacing 141 of 1821. Row structure logged.
+- v1.0.11: first person disabled on main (ViewCamera.FirstPersonAvailable = false; R3/F6 cycle skips it; menu shows
+  "First Person (Coming Soon)"). It lives on branch `first-person` (FirstPersonAvailable = true, own version line
+  FirstPersonVersion 0.1.x); main is merged into it after every main commit.
+- Third person rework against "bobbing near objects": removed rise-over-shoulder (height changed with wall distance),
+  spring arm from the shoulder point with fixed camera-space offset, pull-in SmoothDamp 0.05 s (max 25 cm behind
+  target), 0.35 s hold then SmoothDamp 0.45 s out; auto shoulder swap needs 0.4 s of squeeze + 1.5 s cooldown,
+  side glides with SmoothDamp 0.35 s; body fades when the arm < 0.35 m.
