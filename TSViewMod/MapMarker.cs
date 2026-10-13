@@ -594,7 +594,7 @@ namespace TSViewMod
         {
             private static Dictionary<string, Dictionary<string, int>> s_votes;
 
-            private static string FilePath => System.IO.Path.Combine(Application.dataPath, "TSViewMod_mappose.txt");
+            private static string FilePath => Loader.DataFile("TSViewMod_mappose.txt");
 
             private static string Encode(float sign, Vector3 up)
             {
@@ -770,7 +770,7 @@ namespace TSViewMod
         {
             private static Dictionary<string, Fit> s_fits;
 
-            private static string FilePath => System.IO.Path.Combine(Application.dataPath, "TSViewMod_mapcache.txt");
+            private static string FilePath => Loader.DataFile("TSViewMod_mapcache.txt");
 
             public static bool TryGet(string key, out Fit fit)
             {

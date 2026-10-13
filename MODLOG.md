@@ -196,3 +196,6 @@ Game camera takes over while the player animator has Grabbed/Dead set (or is in 
 
 ## v1.3.2 (2026-10-13)
 Public release prep: Linux only (Windows in progress), no trailer. Comments condensed. Installer finds the DLL next to itself (release zip) or in bin/, takes --game, and copies the bundled map fits (data/TSViewMod_mapcache.txt) if the player has none. csproj falls back to the installed Assembly-CSharp.dll.
+
+## v1.3.3-beta (2026-10-13)
+Labelled beta. Windows: installer/install.ps1 + install.bat (Steam libraryfolders.vdf / GOG registry detection, UTF-8 no BOM, PS 5.1 array fix); verified with pwsh 7.6 on Linux to produce the same JSON as install.py, idempotent, uninstall restores originals. Not run on native Windows. Mod: Loader.DataDir falls back to persistentDataPath when TormentedSouls_Data is read-only (seeded from installed copies); Config.Save no longer throws.

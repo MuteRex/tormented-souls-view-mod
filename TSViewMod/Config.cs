@@ -38,7 +38,7 @@ namespace TSViewMod
         public KeyCode DebugOverlayKey = KeyCode.F8;
         public KeyCode SnapshotKey = KeyCode.F9;
 
-        public static string FilePath => Path.Combine(Application.dataPath, "TSViewMod.cfg");
+        public static string FilePath => Loader.DataFile("TSViewMod.cfg");
 
         public static Config Load()
         {
@@ -103,6 +103,18 @@ namespace TSViewMod
         }
 
         public void Save()
+        {
+            try
+            {
+                Write();
+            }
+            catch (Exception e)
+            {
+                Loader.Log("config not saved: " + e.Message);
+            }
+        }
+
+        private void Write()
         {
             var inv = CultureInfo.InvariantCulture;
             File.WriteAllLines(FilePath, new[]

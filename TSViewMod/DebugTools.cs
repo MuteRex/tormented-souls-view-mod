@@ -18,7 +18,9 @@ namespace TSViewMod
         private float m_fps;
         private string m_lastSnapshot;
 
-        private static string Folder => Path.Combine(Path.GetDirectoryName(Application.dataPath) ?? ".", "TSViewMod_debug");
+        private static string Folder => Loader.DataDir == Application.dataPath
+            ? Path.Combine(Path.GetDirectoryName(Application.dataPath) ?? ".", "TSViewMod_debug")
+            : Path.Combine(Loader.DataDir, "TSViewMod_debug");
 
         private void Update()
         {

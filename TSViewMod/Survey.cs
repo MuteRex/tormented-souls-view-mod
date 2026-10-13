@@ -15,7 +15,7 @@ namespace TSViewMod
     {
         public static bool Active { get; private set; }
 
-        private static string DataFile(string name) => Path.Combine(Application.dataPath, name);
+        private static string DataFile(string name) => Loader.DataFile(name);
         private static string FlagPath => DataFile("TSViewMod_survey.flag");
         private static string ReportPath => DataFile("TSViewMod_survey_report.txt");
 
