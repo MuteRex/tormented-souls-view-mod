@@ -151,3 +151,7 @@ Offline room extraction: precompute world->map fits for every room so unvisited 
   (m_smoothDistance, reset on snap). Colliders ignored by the camera: thin (x,z < 0.5 m), small (max extent < 1.2 m),
   enemies (EnemyBrain parent); cached per collider. Defaults ThirdPersonDistance 1.4, ShoulderOffset 0.45 (user cfg
   updated; previous cfg kept as TSViewMod.cfg.bak-1.0.6). Installed with v1.0.6 prompt arrow.
+- Video 14-25-15 (v1.0.7): camera smooth in open rooms, East Hall dot inside its room; press arrow clipped by the bar
+  above the icon; camera squeezed between a right-hand wall and her head.
+- v1.0.8: automatic shoulder swap (checks both sides every 0.1 s, swaps when the other side has 0.35 m more room,
+  glides over ~0.5 s). Pad prompt: stick icon shrunk to 74% and lowered, arrow drawn inside the icon's original space.

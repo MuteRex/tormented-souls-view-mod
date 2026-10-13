@@ -142,6 +142,8 @@ namespace TSViewMod
             public Image rotateIcon;
             public SwapSpriteControls rotateSwap;
             public Image pressArrow;
+            public Vector3 iconScale;
+            public Vector3 iconPosition;
         }
 
         private readonly Dictionary<GameObject, Prompt> m_prompts = new Dictionary<GameObject, Prompt>();
@@ -190,14 +192,34 @@ namespace TSViewMod
                 SetSprite(prompt.icon, prompt.rotateIcon.sprite);
                 SetText(prompt.key, "");
                 SetActive(prompt.pressArrow, true);
+                // The bar clips anything above its row, so shrink the stick icon and drop it a little to make room
+                // for the arrow inside the icon's own space.
+                SetIconLayout(prompt, 0.74f);
             }
             else
             {
                 SetSprite(prompt.icon, prompt.keyboardBackground);
                 SetText(prompt.key, KeyLabel(config.ResetRotationKey));
                 SetActive(prompt.pressArrow, false);
+                SetIconLayout(prompt, 1f);
             }
             SetText(prompt.label, "Reset View");
+        }
+
+        private static void SetIconLayout(Prompt prompt, float scale)
+        {
+            if (prompt.icon == null)
+            {
+                return;
+            }
+            Transform t = prompt.icon.transform;
+            float h = prompt.icon.rectTransform.rect.height > 1f ? prompt.icon.rectTransform.rect.height : 40f;
+            Vector3 position = prompt.iconPosition + Vector3.down * (h * (1f - scale) * 0.5f);
+            if (t.localScale != prompt.iconScale * scale)
+            {
+                t.localScale = prompt.iconScale * scale;
+                t.localPosition = position;
+            }
         }
 
         private static void SetActive(Image image, bool active)
@@ -245,8 +267,9 @@ namespace TSViewMod
             rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 1f);
             rect.pivot = new Vector2(0.5f, 0f);
             float iconHeight = icon.rectTransform.rect.height > 1f ? icon.rectTransform.rect.height : 40f;
-            rect.anchoredPosition = new Vector2(0f, -0.12f * iconHeight);
-            float side = iconHeight * 0.5f;
+            // Sits on top of the (shrunk) icon, inside the space the full-size icon had.
+            rect.anchoredPosition = new Vector2(0f, -0.04f * iconHeight);
+            float side = iconHeight * 0.36f;
             rect.sizeDelta = new Vector2(side, side);
             Image image = go.GetComponent<Image>();
             image.sprite = s_arrowSprite;
@@ -340,6 +363,11 @@ namespace TSViewMod
                 {
                     DestroyImmediate(behaviour);
                 }
+            }
+            if (prompt.icon != null)
+            {
+                prompt.iconScale = prompt.icon.transform.localScale;
+                prompt.iconPosition = prompt.icon.transform.localPosition;
             }
             prompt.pressArrow = CreatePressArrow(prompt.icon, prompt.label != null ? prompt.label.color : Color.white);
             Loader.Log("button bar: added Reset View prompt in " + state.name + (rotate != null ? " (pad icon from Rotate)" : " (keyboard icon only)"));

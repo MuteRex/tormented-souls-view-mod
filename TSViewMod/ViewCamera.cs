@@ -43,6 +43,10 @@ namespace TSViewMod
         private float m_holdUntil;
         private const float ReturnDelay = 0.35f;
         private const float ReturnSpeed = 1.5f; // metres per second
+        // Shoulder side: +1 right, -1 left. Swaps when a wall squeezes the current side and the other has room.
+        private float m_side = 1f;
+        private float m_sideTarget = 1f;
+        private float m_sideCheckAt;
 
         // Below CloseDistance from the pivot the camera rises over the shoulder; below FadeDistance she is hidden
         // (shadow only) rather than letting the camera sit inside her head.
@@ -256,7 +260,18 @@ namespace TSViewMod
                 // Smooth the pivot: the player is a non-interpolated rigidbody, so its rendered position steps.
                 Vector3 targetPivot = playerTransform.position + Vector3.up * m_config.PivotHeight;
                 m_pivot = Vector3.Lerp(m_pivot, targetPivot, 1f - Mathf.Exp(-20f * Time.unscaledDeltaTime));
-                Vector3 offset = new Vector3(m_config.ShoulderOffset, 0.1f, -m_config.ThirdPersonDistance);
+                if (Time.unscaledTime >= m_sideCheckAt)
+                {
+                    m_sideCheckAt = Time.unscaledTime + 0.1f;
+                    float here = Vector3.Distance(m_pivot, Constrain(m_pivot, m_pivot + rotation * ShoulderOffset(m_sideTarget), playerTransform));
+                    float there = Vector3.Distance(m_pivot, Constrain(m_pivot, m_pivot + rotation * ShoulderOffset(-m_sideTarget), playerTransform));
+                    if (there > here + 0.35f)
+                    {
+                        m_sideTarget = -m_sideTarget;
+                    }
+                }
+                m_side = Mathf.MoveTowards(m_side, m_sideTarget, Time.unscaledDeltaTime * 4f);
+                Vector3 offset = ShoulderOffset(m_side);
                 Vector3 desired = m_pivot + rotation * offset;
                 position = Constrain(m_pivot, desired, playerTransform);
                 float distance = Vector3.Distance(position, m_pivot);
@@ -301,6 +316,11 @@ namespace TSViewMod
                 m_vcam.m_Lens.FarClipPlane = Mathf.Max(brain.OutputCamera.farClipPlane, 100f);
             }
             m_vcam.transform.SetPositionAndRotation(position, rotation);
+        }
+
+        private Vector3 ShoulderOffset(float side)
+        {
+            return new Vector3(m_config.ShoulderOffset * side, 0.1f, -m_config.ThirdPersonDistance);
         }
 
         // Colliders first, then the room's walkable area: some walls in this fixed-camera game have no collider,
