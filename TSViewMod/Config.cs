@@ -16,8 +16,8 @@ namespace TSViewMod
         public float MouseSensitivity = 2.5f;
         public float StickSensitivity = 160f;
         public bool InvertY = false;
-        public float ThirdPersonDistance = 2.1f;
-        public float ShoulderOffset = 0.35f;
+        public float ThirdPersonDistance = 1.4f;
+        public float ShoulderOffset = 0.45f;
         public float PivotHeight = 1.45f;
         public float FieldOfView = 60f;
         public float FirstPersonFieldOfView = 70f;

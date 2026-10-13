@@ -38,6 +38,11 @@ namespace TSViewMod
         private Vector3 m_pivot;
         private bool m_snapNextFrame = true;
         private bool m_tooClose;
+        // Camera distance from the pivot after smoothing: obstacles pull it in at once, it eases back out.
+        private float m_smoothDistance = -1f;
+        private float m_holdUntil;
+        private const float ReturnDelay = 0.35f;
+        private const float ReturnSpeed = 1.5f; // metres per second
 
         // Below CloseDistance from the pivot the camera rises over the shoulder; below FadeDistance she is hidden
         // (shadow only) rather than letting the camera sit inside her head.
@@ -235,6 +240,7 @@ namespace TSViewMod
                 m_yaw = playerTransform.eulerAngles.y;
                 m_pitch = m_mode == ViewMode.FirstPerson ? 0f : 12f;
                 m_pivot = playerTransform.position + Vector3.up * m_config.PivotHeight;
+                m_smoothDistance = -1f; // new room / view: start at the right distance, no easing
                 m_snapNextFrame = false;
             }
             Quaternion rotation = Quaternion.Euler(m_pitch, m_yaw, 0f);
@@ -265,6 +271,27 @@ namespace TSViewMod
                         position = high;
                         distance = Vector3.Distance(high, m_pivot);
                     }
+                }
+                // Pull in instantly (never clip), but wait a moment and ease back out, so passing props and
+                // doorframes don't make the camera pump in and out.
+                Vector3 toCamera = position - m_pivot;
+                if (toCamera.sqrMagnitude > 1e-6f)
+                {
+                    float now = Time.unscaledTime;
+                    if (m_smoothDistance < 0f || distance <= m_smoothDistance)
+                    {
+                        if (m_smoothDistance >= 0f && distance < m_smoothDistance - 0.02f)
+                        {
+                            m_holdUntil = now + ReturnDelay;
+                        }
+                        m_smoothDistance = distance;
+                    }
+                    else if (now >= m_holdUntil)
+                    {
+                        m_smoothDistance = Mathf.MoveTowards(m_smoothDistance, distance, ReturnSpeed * Time.unscaledDeltaTime * (1f + (distance - m_smoothDistance)));
+                    }
+                    position = m_pivot + toCamera.normalized * m_smoothDistance;
+                    distance = m_smoothDistance;
                 }
                 m_tooClose = distance < FadeDistance;
                 m_vcam.m_Lens.FieldOfView = m_config.FieldOfView;
@@ -316,7 +343,8 @@ namespace TSViewMod
             float best = distance;
             foreach (RaycastHit hit in Physics.SphereCastAll(pivot, radius, dir, distance, ~0, QueryTriggerInteraction.Ignore))
             {
-                if (hit.collider.transform.IsChildOf(player) || hit.collider.attachedRigidbody != null && !hit.collider.attachedRigidbody.isKinematic)
+                if (hit.collider.transform.IsChildOf(player) || hit.collider.attachedRigidbody != null && !hit.collider.attachedRigidbody.isKinematic
+                    || IgnoredByCamera(hit.collider))
                 {
                     continue;
                 }
@@ -326,6 +354,28 @@ namespace TSViewMod
                 }
             }
             return pivot + dir * Mathf.Max(best - 0.05f, 0.25f);
+        }
+
+        // Small props (lamps, chair and bed legs, poles, trolleys) and enemies don't push the camera; only walls,
+        // big furniture, floors and ceilings do. Cached per collider.
+        private static readonly Dictionary<Collider, bool> s_ignored = new Dictionary<Collider, bool>();
+
+        private static bool IgnoredByCamera(Collider collider)
+        {
+            if (s_ignored.TryGetValue(collider, out bool ignored))
+            {
+                return ignored;
+            }
+            if (s_ignored.Count > 4096)
+            {
+                s_ignored.Clear(); // old rooms' colliders
+            }
+            Vector3 size = collider.bounds.size;
+            bool thin = size.x < 0.5f && size.z < 0.5f; // poles, legs, lamp stands
+            bool small = Mathf.Max(size.x, Mathf.Max(size.y, size.z)) < 1.2f; // boxes, chairs, carts
+            ignored = thin || small || collider.GetComponentInParent<EnemyBrain>() != null;
+            s_ignored[collider] = ignored;
+            return ignored;
         }
 
         private void UpdateBodyVisibility(bool hide)

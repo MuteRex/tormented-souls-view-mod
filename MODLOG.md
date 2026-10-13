@@ -147,3 +147,7 @@ Offline room extraction: precompute world->map fits for every room so unvisited 
 - v1.0.5: bug fixed: fits made with the prior that still differ were dropped on every load (constant refits); cache
   lines now carry 'p' (withPrior) and those are trusted. Relaxed floor probe (no headroom checks) when strict < 20 cells.
 - v1.0.6: pad Reset View prompt gets a generated down-arrow over the analogR icon (game has no R3/stick-click sprite), tinted like the bar label.
+- v1.0.7 camera steadiness: obstacles pull the camera in instantly, then it holds 0.35 s and eases back out
+  (m_smoothDistance, reset on snap). Colliders ignored by the camera: thin (x,z < 0.5 m), small (max extent < 1.2 m),
+  enemies (EnemyBrain parent); cached per collider. Defaults ThirdPersonDistance 1.4, ShoulderOffset 0.45 (user cfg
+  updated; previous cfg kept as TSViewMod.cfg.bak-1.0.6). Installed with v1.0.6 prompt arrow.
