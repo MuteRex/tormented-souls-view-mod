@@ -81,5 +81,5 @@ map in each room.
 
 ## Credits
 
-Built with AI assistance (Claude). Tormented Souls is © Dual Effect / Abstract Digital / PQube. This repository
+Released under the MIT License (see `LICENSE`). Built with AI assistance (Claude). Tormented Souls is © Dual Effect / Abstract Digital / PQube. This repository
 contains no game files or decompiled code.
