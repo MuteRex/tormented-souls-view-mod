@@ -123,6 +123,7 @@ namespace TSViewMod
             if (!canTakeOver)
             {
                 UpdateCursorLock(false);
+                KeyboardMovement.Update(false, m_player != null ? m_player.GetPlayerMovement() : null);
                 m_snapNextFrame = true;
                 return;
             }
@@ -133,6 +134,7 @@ namespace TSViewMod
             bool freePlay = movement == null || !movement.GamePaused;
             bool looking = live && freePlay && Time.timeScale > 0f;
             UpdateCursorLock(looking && m_config.LockCursor && Application.isFocused);
+            KeyboardMovement.Update(looking && m_config.KeyboardCameraRelative, movement);
             if (looking)
             {
                 ReadLookInput();

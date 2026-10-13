@@ -51,6 +51,8 @@ the body is hidden in first person, the map marker and the inspect reset (`Inspe
 
 Mouse and keyboard: in the mod's views the pointer is captured and hidden while you walk around, and released in
 menus, the map, inspect and the game's own cameras. The mouse turns the camera 1:1; only the stick is speed-capped.
+Movement keys move her relative to the camera, like the left stick, instead of the game's tank controls; she walks,
+and runs while Run is held (`KeyboardCameraRelative`). The original camera keeps the game's own keyboard controls.
 
 Map fits are cached in `TormentedSouls_Data/TSViewMod_mapcache.txt`. Delete that file to recompute them.
 

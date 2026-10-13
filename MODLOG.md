@@ -187,3 +187,6 @@ RE2-style turning (from the user's RE2 clip): the orbit limit now only stops the
 
 ## v1.2.2 (2026-10-13)
 Mouse and keyboard: pointer captured/hidden while walking in the mod views (LockCursor; restored to the game's mode in menus, map, inspect, game cameras, alt-tab). Mouse no longer limited by MaxTurnSpeed. Separate MouseSensitivity / MouseInvertY; Options rows now Stick Speed, Mouse Speed, Invert Y (Off/Stick/Mouse/Both). Reset View on/off moved to cfg only to keep 10 rows. ResetRotationMouseButton in cfg.
+
+## v1.3.0 (2026-10-13)
+User confirmed mouse support (v1.2.2). Keyboard: the game maps movement keys to the "DPAD" actions = tank controls (PlayerMovement.Movement dpad branch). While a mod view is live, KeyboardMovement adds the same keys to "Horizontal/Vertical Axis" in the keyboard Rewired maps (UserInputManager uses the analog, camera-relative path when both are non-zero) and removes them again outside. Analog path picks walk/run by magnitude (m_walkInputRange 0.2-0.7), so for keys max is raised to 1.5 unless Run is held. Config KeyboardCameraRelative. Side effect: no keyboard quick-turn (S+Run) in mod views.

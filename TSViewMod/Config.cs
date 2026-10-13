@@ -17,6 +17,7 @@ namespace TSViewMod
         public bool InvertY = false;
         public bool MouseInvertY = false;
         public bool LockCursor = true;
+        public bool KeyboardCameraRelative = true;
         public float OrbitLimit = 120f;
         public float MaxTurnSpeed = 300f;
         public bool AutoFollow = true;
@@ -69,6 +70,7 @@ namespace TSViewMod
                 config.InvertY = GetBool(values, "InvertY", config.InvertY);
                 config.MouseInvertY = GetBool(values, "MouseInvertY", config.InvertY); // older files: one shared setting
                 config.LockCursor = GetBool(values, "LockCursor", config.LockCursor);
+                config.KeyboardCameraRelative = GetBool(values, "KeyboardCameraRelative", config.KeyboardCameraRelative);
                 config.OrbitLimit = GetFloat(values, "OrbitLimit", config.OrbitLimit);
                 config.MaxTurnSpeed = GetFloat(values, "MaxTurnSpeed", config.MaxTurnSpeed);
                 config.AutoFollow = GetBool(values, "AutoFollow", config.AutoFollow);
@@ -114,6 +116,9 @@ namespace TSViewMod
                 "MouseInvertY=" + MouseInvertY,
                 "# Third/first person: capture and hide the mouse pointer while you walk around (released in menus).",
                 "LockCursor=" + LockCursor,
+                "# Third/first person: movement keys move her relative to the camera (like the stick) instead of the",
+                "# game's tank controls; she walks, and runs while Run is held.",
+                "KeyboardCameraRelative=" + KeyboardCameraRelative,
                 "# Third person: how far (degrees) the camera may swing round from behind her (0 = no limit),",
                 "# and the fastest the right stick may turn it (degrees per second; the mouse is never capped).",
                 "OrbitLimit=" + OrbitLimit.ToString(inv),
