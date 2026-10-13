@@ -108,6 +108,9 @@ Goal: toggleable third-person / first-person camera + red "you are here" marker 
   * Debug door dots hidden when the sheet's back faces the camera.
 
 ## Planned (deferred to save the user's usage — do in a fresh session when weekly usage allows)
+PREFERRED: option B — in-game survey mode (mod drives GameplayEntranceManager.TeleportToSceneTesting through every
+room on a COPY of the save, opens/loads the map, runs the existing fit, writes the cache + weak-room report).
+Option A below (offline level-file parsing) is the fallback.
 Offline room extraction: precompute world->map fits for every room so unvisited rooms are right first time.
 - Scene list: globalgamemanagers BuildSettings (UnityPy) -> levelN per room scene.
 - Map highlights: find the map prefab(s) with MapHelperRoom (MonoBehaviour typetrees need UnityPy's
