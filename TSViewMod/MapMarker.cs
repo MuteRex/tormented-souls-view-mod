@@ -71,6 +71,37 @@ namespace TSViewMod
             s_instance = this;
         }
 
+        // For the camera: the room's walkable area (navmesh, or the floor probe where there's none), built once per
+        // scene a second after it loads. Unknown -> true, so the camera is never blocked by a missing mask.
+        private static WorldMask s_roomMask;
+        private static string s_roomMaskScene;
+        private static float s_roomMaskAt;
+        private static bool s_roomMaskBuilt;
+
+        public static bool InsideRoom(Vector3 p, float overhang)
+        {
+            string scene = SceneManager.GetActiveScene().name;
+            if (s_roomMaskScene != scene)
+            {
+                s_roomMaskScene = scene;
+                s_roomMask = null;
+                s_roomMaskBuilt = false;
+                s_roomMaskAt = Time.unscaledTime + 1f;
+            }
+            if (!s_roomMaskBuilt)
+            {
+                if (Time.unscaledTime < s_roomMaskAt || FindObjectOfType<PlayerController>() == null)
+                {
+                    return true;
+                }
+                s_roomMaskBuilt = true;
+                var log = new StringBuilder("camera bounds: ").Append(scene);
+                s_roomMask = WorldMask.Build(log);
+                Loader.Log(log.ToString());
+            }
+            return s_roomMask == null || s_roomMask.Near(new Vector2(p.x, p.z), overhang);
+        }
+
         // For Survey: whether this room's fit is already cached (so the survey can skip it).
         public static bool IsCached(string scene, string tab, string highlightName)
         {
@@ -978,7 +1009,7 @@ namespace TSViewMod
 
         // ---------- world side: NavMesh rasterised on the XZ plane ----------
 
-        private class WorldMask
+        internal class WorldMask
         {
             public Rect2 rect;
             public float cell;
@@ -986,6 +1017,25 @@ namespace TSViewMod
             public int h;
             public bool[] mask;
             public int count;
+
+            // True if any cell within `radius` metres of p is walkable (lets the camera overhang the walkable edge).
+            public bool Near(Vector2 p, float radius)
+            {
+                int r = Mathf.CeilToInt(radius / cell);
+                int cx = Mathf.FloorToInt((p.x - rect.min.x) / cell);
+                int cy = Mathf.FloorToInt((p.y - rect.min.y) / cell);
+                for (int y = cy - r; y <= cy + r; y++)
+                {
+                    for (int x = cx - r; x <= cx + r; x++)
+                    {
+                        if (x >= 0 && y >= 0 && x < w && y < h && mask[y * w + x])
+                        {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
 
             public bool Get(Vector2 p)
             {
@@ -1431,7 +1481,7 @@ namespace TSViewMod
 
         // ---------- shared helpers ----------
 
-        private struct Rect2
+        internal struct Rect2
         {
             public Vector2 min;
             public Vector2 max;

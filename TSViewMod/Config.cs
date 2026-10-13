@@ -16,6 +16,8 @@ namespace TSViewMod
         public float MouseSensitivity = 2.5f;
         public float StickSensitivity = 160f;
         public bool InvertY = false;
+        public float OrbitLimit = 120f;
+        public float MaxTurnSpeed = 300f;
         public float ThirdPersonDistance = 1.4f;
         public float ShoulderOffset = 0.45f;
         public string ShoulderSide = "Auto";
@@ -62,6 +64,8 @@ namespace TSViewMod
                 config.MouseSensitivity = GetFloat(values, "MouseSensitivity", config.MouseSensitivity);
                 config.StickSensitivity = GetFloat(values, "StickSensitivity", config.StickSensitivity);
                 config.InvertY = GetBool(values, "InvertY", config.InvertY);
+                config.OrbitLimit = GetFloat(values, "OrbitLimit", config.OrbitLimit);
+                config.MaxTurnSpeed = GetFloat(values, "MaxTurnSpeed", config.MaxTurnSpeed);
                 config.ThirdPersonDistance = GetFloat(values, "ThirdPersonDistance", config.ThirdPersonDistance);
                 config.ShoulderOffset = GetFloat(values, "ShoulderOffset", config.ShoulderOffset);
                 config.ShoulderSide = values.TryGetValue("ShoulderSide", out string side) ? side : config.ShoulderSide;
@@ -100,6 +104,10 @@ namespace TSViewMod
                 "MouseSensitivity=" + MouseSensitivity.ToString(inv),
                 "StickSensitivity=" + StickSensitivity.ToString(inv),
                 "InvertY=" + InvertY,
+                "# Third person: how far (degrees) the camera may swing round from behind her (0 = no limit),",
+                "# and the fastest it may turn (degrees per second).",
+                "OrbitLimit=" + OrbitLimit.ToString(inv),
+                "MaxTurnSpeed=" + MaxTurnSpeed.ToString(inv),
                 "ThirdPersonDistance=" + ThirdPersonDistance.ToString(inv),
                 "ShoulderOffset=" + ShoulderOffset.ToString(inv),
                 "# Auto (swaps away from walls), Right or Left",

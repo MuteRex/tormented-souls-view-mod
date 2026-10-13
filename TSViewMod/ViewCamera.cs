@@ -114,14 +114,15 @@ namespace TSViewMod
             m_vcam.Priority = canTakeOver ? mainCamera.Priority + 1 : 0;
             bool hideBody = canTakeOver && (m_mode == ViewMode.FirstPerson && m_config.HideBodyInFirstPerson || m_mode == ViewMode.ThirdPerson && m_tooClose);
             UpdateBodyVisibility(hideBody);
+            CinemachineBrain brain = m_cameraManager != null ? m_cameraManager.GetBrain() : null;
+            bool live = canTakeOver && brain != null && brain.ActiveVirtualCamera == (ICinemachineCamera)m_vcam;
+            UpdateVoidColour(live && m_mode == ViewMode.ThirdPerson ? brain.OutputCamera : null);
             if (!canTakeOver)
             {
                 m_snapNextFrame = true;
                 return;
             }
 
-            CinemachineBrain brain = m_cameraManager.GetBrain();
-            bool live = brain != null && brain.ActiveVirtualCamera == (ICinemachineCamera)m_vcam;
             // GameplayState_FreePlay unpauses the player on enter and pauses it on exit, so GamePaused is true
             // while inspecting/rotating items, in menus and during pickups (which share the look input).
             PlayerMovement movement = m_player.GetPlayerMovement();
@@ -250,8 +251,13 @@ namespace TSViewMod
             {
                 lookY = -lookY;
             }
+            if (m_config.MaxTurnSpeed > 0f)
+            {
+                float maxStep = m_config.MaxTurnSpeed * Time.unscaledDeltaTime;
+                lookX = Mathf.Clamp(lookX, -maxStep, maxStep);
+            }
             m_yaw += lookX;
-            m_pitch = Mathf.Clamp(m_pitch - lookY, m_mode == ViewMode.FirstPerson ? -80f : -40f, 75f);
+            m_pitch = Mathf.Clamp(m_pitch - lookY, m_mode == ViewMode.FirstPerson ? -80f : -25f, 75f); // many rooms have no ceiling
         }
 
         private void PlaceCamera(CinemachineBrain brain)
@@ -265,6 +271,19 @@ namespace TSViewMod
                 m_pivot = playerTransform.position + Vector3.up * m_config.PivotHeight;
                 m_smoothDistance = -1f; // new room / view: start at the right distance, no easing
                 m_snapNextFrame = false;
+            }
+            if (m_mode == ViewMode.ThirdPerson && m_config.OrbitLimit > 0f && m_config.OrbitLimit < 180f)
+            {
+                // Keep the camera within OrbitLimit of her back; when she turns past it, the camera follows round
+                // smoothly instead of snapping.
+                float facing = playerTransform.eulerAngles.y;
+                float rel = Mathf.DeltaAngle(facing, m_yaw);
+                float limit = m_config.OrbitLimit;
+                if (Mathf.Abs(rel) > limit)
+                {
+                    float target = facing + Mathf.Sign(rel) * limit;
+                    m_yaw = Mathf.MoveTowardsAngle(m_yaw, target, 360f * Time.unscaledDeltaTime);
+                }
             }
             Quaternion rotation = Quaternion.Euler(m_pitch, m_yaw, 0f);
             Vector3 position;
@@ -373,29 +392,31 @@ namespace TSViewMod
 
         // Colliders first, then the room's walkable area: some walls in this fixed-camera game have no collider,
         // but the NavMesh always stops at them, so the camera may overhang its edge by at most NavOverhang.
-        private const float NavOverhang = 0.45f;
+        private const float NavOverhang = 0.3f;
 
         private static Vector3 Constrain(Vector3 pivot, Vector3 desired, Transform player)
         {
             Vector3 position = ResolveCollision(pivot, desired, player);
-            if (!NavMesh.SamplePosition(player.position, out NavMeshHit start, 1.5f, NavMesh.AllAreas))
-            {
-                return position; // room without a navmesh: colliders only
-            }
-            Vector3 flatTarget = new Vector3(position.x, start.position.y, position.z);
-            Vector3 flat = flatTarget - start.position;
-            float flatDistance = flat.magnitude;
-            if (flatDistance < 0.01f || !NavMesh.Raycast(start.position, flatTarget, out NavMeshHit edge, NavMesh.AllAreas))
+            // Walk out along the arm and stop where it leaves the room's walkable area (+ overhang): walls in this
+            // fixed-camera game often have no collider and no back side, and behind them is the void.
+            Vector3 arm = position - pivot;
+            float length = arm.magnitude;
+            if (length < 0.01f || !MapMarker.InsideRoom(pivot, NavOverhang))
             {
                 return position;
             }
-            float allowed = Vector3.Distance(start.position, edge.position) + NavOverhang;
-            if (flatDistance <= allowed)
+            const float step = 0.05f;
+            float allowed = 0f;
+            for (float d = step; d <= length + 1e-4f; d += step)
             {
-                return position;
+                if (!MapMarker.InsideRoom(pivot + arm * (d / length), NavOverhang))
+                {
+                    break;
+                }
+                allowed = d;
             }
-            // Pull the camera in along its own line toward the pivot until it is back over the walkable area.
-            return Vector3.Lerp(pivot, position, allowed / flatDistance);
+            allowed = Mathf.Min(allowed, length);
+            return pivot + arm * (Mathf.Max(allowed, 0.25f) / length);
         }
 
         private static Vector3 ResolveCollision(Vector3 pivot, Vector3 desired, Transform player)
@@ -444,6 +465,30 @@ namespace TSViewMod
             ignored = thin || small || collider.GetComponentInParent<EnemyBrain>() != null;
             s_ignored[collider] = ignored;
             return ignored;
+        }
+
+        // Wherever the camera still sees past the built set, show black (the game's darkness) instead of the
+        // camera's default background. Restored as soon as the game's own cameras are back.
+        private Camera m_voidCamera;
+        private CameraClearFlags m_voidFlags;
+        private Color m_voidColour;
+
+        private void UpdateVoidColour(Camera camera)
+        {
+            if (m_voidCamera != null && m_voidCamera != camera)
+            {
+                m_voidCamera.clearFlags = m_voidFlags;
+                m_voidCamera.backgroundColor = m_voidColour;
+                m_voidCamera = null;
+            }
+            if (camera != null && m_voidCamera == null)
+            {
+                m_voidCamera = camera;
+                m_voidFlags = camera.clearFlags;
+                m_voidColour = camera.backgroundColor;
+                camera.clearFlags = CameraClearFlags.SolidColor;
+                camera.backgroundColor = Color.black;
+            }
         }
 
         private void UpdateBodyVisibility(bool hide)

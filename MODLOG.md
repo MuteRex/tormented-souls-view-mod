@@ -169,3 +169,9 @@ Offline room extraction: precompute world->map fits for every room so unvisited 
   spring arm from the shoulder point with fixed camera-space offset, pull-in SmoothDamp 0.05 s (max 25 cm behind
   target), 0.35 s hold then SmoothDamp 0.45 s out; auto shoulder swap needs 0.4 s of squeeze + 1.5 s cooldown,
   side glides with SmoothDamp 0.35 s; body fades when the arm < 0.35 m.
+- v1.1.0 tagged at e6c16e6 (user: bobbing "significantly better", controller view switching works).
+- v1.1.1 void/clipping (painting corridor etc.): camera arm stops where it leaves the room's walkable area
+  (MapMarker.InsideRoom: navmesh or floor-probe WorldMask per scene, built 1 s after load, overhang 0.3 m, replaces
+  NavMesh.Raycast); output camera clears to black while the mod camera is live (restored after); third-person upward
+  pitch limited to -25 (many rooms have no ceiling); OrbitLimit 120 deg from her back (camera follows round at
+  360 deg/s when exceeded) and MaxTurnSpeed 300 deg/s, both in cfg.
