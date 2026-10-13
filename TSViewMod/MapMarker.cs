@@ -109,8 +109,14 @@ namespace TSViewMod
             Config config = ViewCamera.Instance != null ? ViewCamera.Instance.Config : null;
             if (config != null && Input.GetKeyDown(config.MapMarkerKey))
             {
-                m_enabled = !m_enabled;
-                ViewCamera.Instance.ShowToast(m_enabled ? "Map marker: on" : "Map marker: off");
+                config.MapMarker = !config.MapMarker;
+                config.Save();
+                ViewCamera.Instance.ShowToast(config.MapMarker ? "Map marker: on" : "Map marker: off");
+            }
+            // The config is the source of truth (the options page changes it too).
+            if (config != null && m_enabled != config.MapMarker)
+            {
+                m_enabled = config.MapMarker;
                 foreach (Marked marked in m_marked)
                 {
                     Apply(marked);

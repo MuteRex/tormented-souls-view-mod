@@ -149,7 +149,9 @@ namespace TSViewMod
             m_toastUntil = Time.unscaledTime + 2.5f;
         }
 
-        private void SetMode(ViewMode mode)
+        public ViewMode Mode => m_mode;
+
+        public void SetMode(ViewMode mode)
         {
             m_mode = mode;
             m_snapNextFrame = true;
@@ -260,7 +262,15 @@ namespace TSViewMod
                 // Smooth the pivot: the player is a non-interpolated rigidbody, so its rendered position steps.
                 Vector3 targetPivot = playerTransform.position + Vector3.up * m_config.PivotHeight;
                 m_pivot = Vector3.Lerp(m_pivot, targetPivot, 1f - Mathf.Exp(-20f * Time.unscaledDeltaTime));
-                if (Time.unscaledTime >= m_sideCheckAt)
+                if (string.Equals(m_config.ShoulderSide, "Right", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    m_sideTarget = 1f;
+                }
+                else if (string.Equals(m_config.ShoulderSide, "Left", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    m_sideTarget = -1f;
+                }
+                else if (Time.unscaledTime >= m_sideCheckAt)
                 {
                     m_sideCheckAt = Time.unscaledTime + 0.1f;
                     float here = Vector3.Distance(m_pivot, Constrain(m_pivot, m_pivot + rotation * ShoulderOffset(m_sideTarget), playerTransform));

@@ -6,7 +6,7 @@
     <RootNamespace>TSViewMod</RootNamespace>
     <Nullable>disable</Nullable>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-    <Version>1.0.8</Version>
+    <Version>1.0.9</Version>
     <GameManaged Condition="'$(GameManaged)' == ''">/mnt/media/Games/Tormented Souls/TormentedSouls_Data/Managed</GameManaged>
     <!-- Compile against the unpatched game code so the mod never depends on our debug patch. -->
     <OriginalAssemblyCSharp Condition="'$(OriginalAssemblyCSharp)' == ''">$(HOME)/Games-backups/TormentedSouls/Assembly-CSharp.dll.original</OriginalAssemblyCSharp>
@@ -21,6 +21,7 @@
     <Reference Include="Cinemachine"><HintPath>$(GameManaged)/Cinemachine.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Unity.Addressables"><HintPath>$(GameManaged)/Unity.Addressables.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Unity.ResourceManager"><HintPath>$(GameManaged)/Unity.ResourceManager.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Sirenix.Serialization"><HintPath>$(GameManaged)/Sirenix.Serialization.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Rewired_Core"><HintPath>$(GameManaged)/Rewired_Core.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine"><HintPath>$(GameManaged)/UnityEngine.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.CoreModule"><HintPath>$(GameManaged)/UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>

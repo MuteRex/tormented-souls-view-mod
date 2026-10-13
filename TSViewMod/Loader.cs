@@ -22,6 +22,7 @@ namespace TSViewMod
             go.AddComponent<MapMarker>();
             go.AddComponent<InspectReset>();
             go.AddComponent<DebugTools>();
+            go.AddComponent<OptionsPage>();
             if (Survey.TakeFlag())
             {
                 go.AddComponent<Survey>();

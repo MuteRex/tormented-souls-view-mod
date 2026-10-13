@@ -155,3 +155,9 @@ Offline room extraction: precompute world->map fits for every room so unvisited 
   above the icon; camera squeezed between a right-hand wall and her head.
 - v1.0.8: automatic shoulder swap (checks both sides every 0.1 s, swaps when the other side has 0.35 m more room,
   glides over ~0.5 s). Pad prompt: stick icon shrunk to 74% and lowered, arrow drawn inside the icon's original space.
+- v1.0.9: "View Mod" category in the game's Options menu (OptionsPage.cs). Copies the last category button and the
+  panel with the most OptionMenuButtonController rows; strips MultilanguageUIAutotext; ViewModPanel :
+  BaseMenuPanelController builds 13 rows from the first row; wired via reflection (OptionPressed /
+  OnPressedBackOnPanel, NavMenuItems insert before Back), not via panelsData. Changes apply live and save the cfg.
+  Config.ShoulderSide (Auto/Right/Left); map marker follows config.MapMarker. Needs Sirenix.Serialization ref
+  (NavItemButton : SerializedMonoBehaviour). Logs a hierarchy dump on injection for layout fixes. Untested.

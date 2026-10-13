@@ -18,6 +18,7 @@ namespace TSViewMod
         public bool InvertY = false;
         public float ThirdPersonDistance = 1.4f;
         public float ShoulderOffset = 0.45f;
+        public string ShoulderSide = "Auto";
         public float PivotHeight = 1.45f;
         public float FieldOfView = 60f;
         public float FirstPersonFieldOfView = 70f;
@@ -63,6 +64,7 @@ namespace TSViewMod
                 config.InvertY = GetBool(values, "InvertY", config.InvertY);
                 config.ThirdPersonDistance = GetFloat(values, "ThirdPersonDistance", config.ThirdPersonDistance);
                 config.ShoulderOffset = GetFloat(values, "ShoulderOffset", config.ShoulderOffset);
+                config.ShoulderSide = values.TryGetValue("ShoulderSide", out string side) ? side : config.ShoulderSide;
                 config.PivotHeight = GetFloat(values, "PivotHeight", config.PivotHeight);
                 config.FieldOfView = GetFloat(values, "FieldOfView", config.FieldOfView);
                 config.FirstPersonFieldOfView = GetFloat(values, "FirstPersonFieldOfView", config.FirstPersonFieldOfView);
@@ -82,7 +84,7 @@ namespace TSViewMod
             return config;
         }
 
-        private void Save()
+        public void Save()
         {
             var inv = CultureInfo.InvariantCulture;
             File.WriteAllLines(FilePath, new[]
@@ -100,6 +102,8 @@ namespace TSViewMod
                 "InvertY=" + InvertY,
                 "ThirdPersonDistance=" + ThirdPersonDistance.ToString(inv),
                 "ShoulderOffset=" + ShoulderOffset.ToString(inv),
+                "# Auto (swaps away from walls), Right or Left",
+                "ShoulderSide=" + ShoulderSide,
                 "PivotHeight=" + PivotHeight.ToString(inv),
                 "FieldOfView=" + FieldOfView.ToString(inv),
                 "FirstPersonFieldOfView=" + FirstPersonFieldOfView.ToString(inv),
