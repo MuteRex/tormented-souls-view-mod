@@ -66,3 +66,9 @@ Goal: toggleable third-person / first-person camera + red "you are here" marker 
   entry's current sprite (game-swapped analogR art), label "Reset View".
   Map dot vanished after walking / after reset: dot was lifted toward Camera.main (gameplay cam), which can be behind
   the sheet. Now lifted toward the camera whose cullingMask renders the highlight layer.
+- v0.6.0 (user video 01:57): prompt now correct (keycap R / pad analogR). Bugs: (1) map reset showed the BACK of the
+  sheet (R/F key drawing page) — camera-based front guess was wrong; (2) dot visible at 1:21, gone at 1:39 after the
+  player went up the East Wing Hall stairs. Fix: front side = side the room highlights sit on relative to the other
+  sheet meshes (FrontSign, logged); reset faces that side to the camera that renders the highlight layer; dot lifted
+  along the front normal, drawn with Hidden/Internal-Colored ZTest Always (queue 4000), hidden when the sheet's back
+  faces the camera, and clamped into the current room's rect (stairs/landings can map past the outline).

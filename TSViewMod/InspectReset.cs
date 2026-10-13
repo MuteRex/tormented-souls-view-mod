@@ -65,8 +65,12 @@ namespace TSViewMod
             }
             Quaternion initial = (Quaternion)InitialRotField.GetValue(viewer);
             MapHelperRoom map = m_resetting.GetComponentInChildren<MapHelperRoom>();
-            Camera camera = CameraField?.GetValue(viewer) as Camera;
-            m_target = map != null && camera != null ? FaceViewer(m_resetting, initial, map.transform, camera.transform) : initial;
+            Camera camera = map != null ? MapMarker.MapCamera(map.gameObject, map.transform.position) : null;
+            if (camera == null)
+            {
+                camera = CameraField?.GetValue(viewer) as Camera;
+            }
+            m_target = map != null && camera != null ? FaceViewer(m_resetting, initial, map, camera.transform) : initial;
         }
 
         private void LateUpdate()
@@ -83,20 +87,16 @@ namespace TSViewMod
             }
         }
 
-        // Rotation for the pivot that lays the map sheet flat toward the camera, upright as it opened.
-        private static Quaternion FaceViewer(Transform pivot, Quaternion initial, Transform sheet, Transform camera)
+        // Rotation for the pivot that lays the map sheet flat toward the camera, printed side up, upright as it opened.
+        private static Quaternion FaceViewer(Transform pivot, Quaternion initial, MapHelperRoom map, Transform camera)
         {
-            int normal = MapMarker.NormalAxis(sheet.GetComponent<MapHelperRoom>());
+            Transform sheet = map.transform;
+            int normal = MapMarker.NormalAxis(map);
+            Vector3 faceLocal = MapMarker.FrontNormalLocal(normal, MapMarker.FrontSign(map, normal));
             Quaternion current = pivot.rotation;
 
-            // Work out which side of the sheet faces the viewer and which in-plane axis is "up", using the opening pose.
+            // "Up" is the in-plane axis that pointed most upward on screen when the item opened.
             pivot.rotation = initial;
-            Vector3 toCamera = (camera.position - sheet.position).normalized;
-            Vector3 face = Axis(sheet, normal);
-            if (Vector3.Dot(face, toCamera) < 0f)
-            {
-                face = -face;
-            }
             int upIndex = -1;
             float upSign = 1f;
             float bestDot = -1f;
@@ -114,11 +114,11 @@ namespace TSViewMod
                     upSign = Mathf.Sign(d);
                 }
             }
-            Vector3 faceLocal = sheet.InverseTransformDirection(face);
-            Vector3 upLocal = sheet.InverseTransformDirection(Axis(sheet, upIndex) * upSign);
+            Vector3 upLocal = Vector3.zero;
+            upLocal[upIndex] = upSign;
             pivot.rotation = current;
 
-            // Delta that takes the sheet's current face/up onto camera-facing/camera-up, applied to the pivot.
+            // Delta that takes the sheet's printed face/up onto camera-facing/camera-up, applied to the pivot.
             Vector3 faceNow = sheet.TransformDirection(faceLocal);
             Vector3 upNow = sheet.TransformDirection(upLocal);
             Quaternion from = Quaternion.LookRotation(faceNow, upNow);

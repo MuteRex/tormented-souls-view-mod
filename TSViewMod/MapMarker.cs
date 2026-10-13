@@ -30,6 +30,8 @@ namespace TSViewMod
             public bool ready;
             public string key;
             public float normalCoord;
+            public Vector2 rectMin;
+            public Vector2 rectMax;
         }
 
         private class Marked
@@ -41,6 +43,7 @@ namespace TSViewMod
             public int vAxis;
             public int nAxis;
             public float dotSize;
+            public float frontSign = 1f;
             public readonly List<RoomDot> rooms = new List<RoomDot>();
         }
 
@@ -109,6 +112,11 @@ namespace TSViewMod
                     {
                         Vector3 p = m_player.transform.position;
                         Vector2 uv = room.fit.Apply(new Vector2(p.x, p.z));
+                        // The player is in this room, so keep the dot inside the room's shape on the map
+                        // (navmesh areas like stair landings can map slightly past the drawn outline).
+                        float margin = marked.dotSize * 0.3f;
+                        uv.x = Mathf.Clamp(uv.x, room.rectMin.x + margin, room.rectMax.x - margin);
+                        uv.y = Mathf.Clamp(uv.y, room.rectMin.y + margin, room.rectMax.y - margin);
                         local = Vector3.zero;
                         local[marked.uAxis] = uv.x;
                         local[marked.vAxis] = uv.y;
@@ -116,15 +124,24 @@ namespace TSViewMod
                     }
                     else
                     {
-                        Renderer r = room.highlight.GetComponent<Renderer>();
-                        local = marked.helper.transform.InverseTransformPoint(r != null ? r.bounds.center : room.highlight.transform.position);
+                        local = Vector3.zero;
+                        local[marked.uAxis] = (room.rectMin.x + room.rectMax.x) * 0.5f;
+                        local[marked.vAxis] = (room.rectMin.y + room.rectMax.y) * 0.5f;
+                        local[marked.nAxis] = room.normalCoord;
                     }
-                    Vector3 world = marked.helper.transform.TransformPoint(local);
-                    // Lift the dot toward the camera that renders the map (not the gameplay camera, which can
-                    // be on the far side of the sheet and would push the dot behind the paper).
+                    Transform sheet = marked.helper.transform;
+                    Vector3 world = sheet.TransformPoint(local);
+                    // Lift the dot off the printed side of the sheet (the side the room highlights sit on).
+                    Vector3 front = sheet.TransformDirection(FrontNormalLocal(marked.nAxis, marked.frontSign)).normalized;
+                    room.dot.position = world + front * marked.dotSize * 0.6f;
+                    // Drawn on top of everything, so hide it when the sheet is turned to its back.
                     Camera viewer = MapCamera(room.highlight, world);
-                    Vector3 toViewer = viewer != null ? (viewer.transform.position - world).normalized : marked.helper.transform.up;
-                    room.dot.position = world + toViewer * marked.dotSize * 0.6f;
+                    bool facing = viewer == null || Vector3.Dot(front, viewer.transform.position - world) > 0f;
+                    Renderer dotRenderer = room.dot.GetComponent<Renderer>();
+                    if (dotRenderer.enabled != facing)
+                    {
+                        dotRenderer.enabled = facing;
+                    }
                     float size = marked.dotSize * pulse;
                     Vector3 parentScale = room.dot.parent != null ? room.dot.parent.lossyScale : Vector3.one;
                     room.dot.localScale = new Vector3(size / Safe(parentScale.x), size / Safe(parentScale.y), size / Safe(parentScale.z));
@@ -132,9 +149,9 @@ namespace TSViewMod
             }
         }
 
-        private Camera m_mapCamera;
+        private static Camera m_mapCamera;
 
-        private Camera MapCamera(GameObject highlight, Vector3 near)
+        public static Camera MapCamera(GameObject highlight, Vector3 near)
         {
             int bit = 1 << highlight.layer;
             if (m_mapCamera != null && m_mapCamera.isActiveAndEnabled && (m_mapCamera.cullingMask & bit) != 0)
@@ -186,6 +203,7 @@ namespace TSViewMod
             marked.vAxis = marked.nAxis == 2 ? 1 : 2;
             marked.dotSize = Mathf.Max(Mathf.Max(spread[marked.uAxis], spread[marked.vAxis]) * 0.03f, 0.002f);
 
+            marked.frontSign = FrontSign(helper, marked.nAxis);
             var pending = new List<KeyValuePair<RoomShape, RoomDot>>();
             var seenHighlights = new HashSet<GameObject>();
             foreach (RoomShape room in rooms)
@@ -194,7 +212,15 @@ namespace TSViewMod
                 {
                     continue;
                 }
-                var dot = new RoomDot { highlight = room.highlight, normalCoord = room.bounds.center[marked.nAxis], key = scene + "|" + room.tab + "|" + room.highlight.name };
+                Rect2 roomRect = room.To2D(marked.uAxis, marked.vAxis);
+                var dot = new RoomDot
+                {
+                    highlight = room.highlight,
+                    normalCoord = room.bounds.center[marked.nAxis],
+                    key = scene + "|" + room.tab + "|" + room.highlight.name,
+                    rectMin = roomRect.min,
+                    rectMax = roomRect.max
+                };
                 dot.dot = CreateDot(room.highlight);
                 if (FitCache.TryGet(dot.key, out Fit cached))
                 {
@@ -215,7 +241,7 @@ namespace TSViewMod
             }
             else
             {
-                Loader.Log("map marker: scene " + scene + ", " + marked.rooms.Count + " dot(s) from cache");
+                Loader.Log("map marker: scene " + scene + ", " + marked.rooms.Count + " dot(s) from cache, front sign " + marked.frontSign);
             }
             return marked;
         }
@@ -257,6 +283,48 @@ namespace TSViewMod
             {
                 Apply(marked);
             }
+        }
+
+        // +1 or -1: which way along the sheet's normal axis the printed side (with the room highlights) faces.
+        // The highlights sit just above the paper, so compare their depth with the rest of the sheet's meshes.
+        public static float FrontSign(MapHelperRoom helper, int normal)
+        {
+            var highlights = new HashSet<GameObject>();
+            float highlightSum = 0f;
+            int highlightCount = 0;
+            foreach (MapHelperStringToGameObject entry in helper.sceneToGameObjects)
+            {
+                if (entry != null && entry.highlight != null && highlights.Add(entry.highlight) && TryLocalBounds(helper.transform, entry.highlight, out Bounds b))
+                {
+                    highlightSum += b.center[normal];
+                    highlightCount++;
+                }
+            }
+            float paperSum = 0f;
+            int paperCount = 0;
+            foreach (MeshFilter filter in helper.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (filter.sharedMesh == null || highlights.Contains(filter.gameObject) || filter.name == "TSViewMod_MapDot")
+                {
+                    continue;
+                }
+                Bounds mb = filter.sharedMesh.bounds;
+                paperSum += helper.transform.InverseTransformPoint(filter.transform.TransformPoint(mb.center))[normal];
+                paperCount++;
+            }
+            if (highlightCount == 0 || paperCount == 0)
+            {
+                return 1f;
+            }
+            float diff = highlightSum / highlightCount - paperSum / paperCount;
+            return diff < 0f ? -1f : 1f;
+        }
+
+        public static Vector3 FrontNormalLocal(int normal, float sign)
+        {
+            Vector3 v = Vector3.zero;
+            v[normal] = sign;
+            return v;
         }
 
         public static int NormalAxis(MapHelperRoom helper)
@@ -972,14 +1040,15 @@ namespace TSViewMod
             {
                 return m_material;
             }
-            foreach (string shaderName in new[] { "Sprites/Default", "UI/Default", "Unlit/Color" })
+            Shader shader = Shader.Find("Hidden/Internal-Colored");
+            if (shader != null)
             {
-                Shader shader = Shader.Find(shaderName);
-                if (shader != null)
-                {
-                    m_material = new Material(shader) { color = MarkerRed, renderQueue = 3100 };
-                    return m_material;
-                }
+                // Always on top: the sheet's folds and paper layers can't swallow the dot.
+                m_material = new Material(shader) { color = MarkerRed, renderQueue = 4000 };
+                m_material.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always);
+                m_material.SetInt("_ZWrite", 0);
+                m_material.SetInt("_Cull", 0);
+                return m_material;
             }
             m_material = new Material(fallbackSource.sharedMaterial) { color = MarkerRed };
             m_material.EnableKeyword("_EMISSION");
