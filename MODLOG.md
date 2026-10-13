@@ -141,3 +141,8 @@ Offline room extraction: precompute world->map fits for every room so unvisited 
   ExamRoom o7, Library o0, BedRoom o5, Kitchen o4, Bathroom_B o7, DentalRoom_P o0, GeneratorRoom o2, OvenRoom o2.
 - v1.0.4: FitCache.MajorityOrientation (>=5 fits, >=60% share) -> +0.15 score penalty for other orientations, and
   cached outliers are dropped + refitted (TryGetTrusted, in normal play too). Survey frame budget 80 ms, fit timeout 240 s.
+- Second survey run (v1.0.4): 42 rooms fitted, 71/73 cached, 58x o1. Still off-majority after the prior (doors
+  outvote it): MaternityRoom, Office, Library, MeetingRoom, Kitchen, Bathroom_D(_M), Bathroom_E_M, GeneratorRoom,
+  BigHall x4 sheets. No fit: Pharmacy (strict probe 17 cells), Bathroom_E (1 cell).
+- v1.0.5: bug fixed: fits made with the prior that still differ were dropped on every load (constant refits); cache
+  lines now carry 'p' (withPrior) and those are trusted. Relaxed floor probe (no headroom checks) when strict < 20 cells.

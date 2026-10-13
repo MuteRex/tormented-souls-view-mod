@@ -673,6 +673,7 @@ namespace TSViewMod
             public Vector2 offset;
             public float iou;
             public float score;
+            public bool withPrior; // fitted knowing the usual orientation: trust it even if it differs
 
             public Vector2 Apply(Vector2 world)
             {
@@ -734,7 +735,7 @@ namespace TSViewMod
                     return false;
                 }
                 int expected = MajorityOrientation();
-                if (expected >= 0 && fit.orientation != expected)
+                if (expected >= 0 && fit.orientation != expected && !fit.withPrior)
                 {
                     Loader.Log("map marker: cached " + key + " has orientation " + fit.orientation + ", most rooms use " + expected + "; refitting");
                     s_fits.Remove(key);
@@ -769,7 +770,8 @@ namespace TSViewMod
                             orientation = int.Parse(f[2], inv),
                             scale = float.Parse(f[3], inv),
                             offset = new Vector2(float.Parse(f[4], inv), float.Parse(f[5], inv)),
-                            iou = float.Parse(f[6], inv)
+                            iou = float.Parse(f[6], inv),
+                            withPrior = f.Length > 7 && f[7] == "p"
                         };
                     }
                 }
@@ -790,7 +792,7 @@ namespace TSViewMod
                     {
                         Fit f = pair.Value;
                         lines.Add(string.Join("\t", CacheVersion, pair.Key, f.orientation.ToString(inv), f.scale.ToString("R", inv),
-                            f.offset.x.ToString("R", inv), f.offset.y.ToString("R", inv), f.iou.ToString("R", inv)));
+                            f.offset.x.ToString("R", inv), f.offset.y.ToString("R", inv), f.iou.ToString("R", inv), f.withPrior ? "p" : "-"));
                     }
                     System.IO.File.WriteAllLines(FilePath, lines);
                 }
@@ -886,6 +888,7 @@ namespace TSViewMod
                     best = orientBest;
                 }
             }
+            best.withPrior = expected >= 0;
             result[0] = best;
         }
 
@@ -1046,6 +1049,13 @@ namespace TSViewMod
             // and it's connected to where the player stands (drops furniture tops, walls and outside areas).
             private static WorldMask BuildFromFloor(StringBuilder log)
             {
+                // Strict first; some rooms have big solid helper volumes that block every headroom check, so retry
+                // with only the floor-height test (walls then count as thin floor strips, fine for fitting).
+                return BuildFromFloor(log, true) ?? BuildFromFloor(log, false);
+            }
+
+            private static WorldMask BuildFromFloor(StringBuilder log, bool strict)
+            {
                 PlayerController player = FindObjectOfType<PlayerController>();
                 if (player == null)
                 {
@@ -1083,13 +1093,13 @@ namespace TSViewMod
                     for (int x = 0; x < m.w; x++)
                     {
                         Vector3 top = new Vector3(rect.min.x + (x + 0.5f) * cell, origin.y + 1.6f, rect.min.y + (y + 0.5f) * cell);
-                        if (Physics.CheckSphere(top, 0.15f, ~0, noTriggers)
+                        if ((strict && Physics.CheckSphere(top, 0.15f, ~0, noTriggers))
                             || !Physics.Raycast(top, Vector3.down, out RaycastHit hit, 2.6f, ~0, noTriggers)
                             || hit.normal.y < 0.7f || Mathf.Abs(hit.point.y - origin.y) > 0.6f)
                         {
                             continue;
                         }
-                        floor[y * m.w + x] = !Physics.CheckCapsule(hit.point + Vector3.up * 0.45f, hit.point + Vector3.up * 1.4f, 0.12f, ~0, noTriggers);
+                        floor[y * m.w + x] = !strict || !Physics.CheckCapsule(hit.point + Vector3.up * 0.45f, hit.point + Vector3.up * 1.4f, 0.12f, ~0, noTriggers);
                     }
                 }
                 // Flood fill from the floor cell nearest the player.
@@ -1137,7 +1147,7 @@ namespace TSViewMod
                         m.count++;
                     }
                 }
-                log.Append(", floor probe ").Append(rect).Append(' ').Append(m.count).Append(" cells");
+                log.Append(strict ? ", floor probe " : ", relaxed floor probe ").Append(rect).Append(' ').Append(m.count).Append(" cells");
                 return m.count > 20 ? m : null;
             }
 
