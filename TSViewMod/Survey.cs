@@ -23,7 +23,7 @@ namespace TSViewMod
 
         private const string MapKey = "Items/Map_Zoom.prefab";
         private const float LoadTimeout = 60f;
-        private const float FitTimeout = 60f;
+        private const float FitTimeout = 240f;
 
         // Consumed straight away, so a crash mid-survey doesn't leave the next normal launch in survey mode.
         public static bool TakeFlag()

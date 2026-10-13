@@ -136,3 +136,8 @@ Offline room extraction: precompute world->map fits for every room so unvisited 
   flood fill from the player). Survey turns on the game's own god mode (UserDataManager.SetGodModeStatus, checked in
   PlayerController damage), skips rooms whose fits are all cached (no done-file), WEAK threshold IoU < 0.25.
 - Debug teleport side effect: PlayerMovementManager.IsInLightZone NRE spam (game code), harmless.
+- First survey run (v1.0.2, 13:43-13:57): all 70 map rooms visited, no deaths, save restored. 37 fitted; 32 had no
+  navmesh; BigHall timed out (60 s) because fitting got 4 ms/frame at 10 fps. Orientations: 29x o1, outliers
+  ExamRoom o7, Library o0, BedRoom o5, Kitchen o4, Bathroom_B o7, DentalRoom_P o0, GeneratorRoom o2, OvenRoom o2.
+- v1.0.4: FitCache.MajorityOrientation (>=5 fits, >=60% share) -> +0.15 score penalty for other orientations, and
+  cached outliers are dropped + refitted (TryGetTrusted, in normal play too). Survey frame budget 80 ms, fit timeout 240 s.

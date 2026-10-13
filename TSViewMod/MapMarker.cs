@@ -74,7 +74,7 @@ namespace TSViewMod
         // For Survey: whether this room's fit is already cached (so the survey can skip it).
         public static bool IsCached(string scene, string tab, string highlightName)
         {
-            return FitCache.TryGet(scene + "|" + tab + "|" + highlightName, out Fit _);
+            return FitCache.TryGetTrusted(scene + "|" + tab + "|" + highlightName, out Fit _);
         }
 
         // For Survey: true once the map has been marked in this scene and every room on it has its fit
@@ -378,7 +378,7 @@ namespace TSViewMod
                 // One small GPU draw + readback of the room's outline; used to keep the dot inside it.
                 dot.shape = RenderMapMask(helper.transform, room, marked.uAxis, marked.vAxis, marked.nAxis);
                 dot.doors = DoorPoints();
-                if (FitCache.TryGet(dot.key, out Fit cached))
+                if (FitCache.TryGetTrusted(dot.key, out Fit cached))
                 {
                     dot.fit = cached;
                     dot.hasFit = cached.iou > 0.2f;
@@ -699,6 +699,50 @@ namespace TSViewMod
                 s_fits[key] = fit;
             }
 
+            // The whole building is drawn the same way round on every sheet, so once most fits agree on an
+            // orientation, that's the expected one (-1 = not enough evidence yet).
+            public static int MajorityOrientation()
+            {
+                Load();
+                var counts = new int[8];
+                int total = 0;
+                foreach (Fit f in s_fits.Values)
+                {
+                    if (f.orientation >= 0 && f.orientation < 8)
+                    {
+                        counts[f.orientation]++;
+                        total++;
+                    }
+                }
+                int best = 0;
+                for (int o = 1; o < 8; o++)
+                {
+                    if (counts[o] > counts[best])
+                    {
+                        best = o;
+                    }
+                }
+                return total >= 5 && counts[best] >= total * 0.6f ? best : -1;
+            }
+
+            // A cached fit facing a different way than the rest is most likely mirrored/rotated: drop it so the room
+            // is refitted with the orientation preference.
+            public static bool TryGetTrusted(string key, out Fit fit)
+            {
+                if (!TryGet(key, out fit))
+                {
+                    return false;
+                }
+                int expected = MajorityOrientation();
+                if (expected >= 0 && fit.orientation != expected)
+                {
+                    Loader.Log("map marker: cached " + key + " has orientation " + fit.orientation + ", most rooms use " + expected + "; refitting");
+                    s_fits.Remove(key);
+                    return false;
+                }
+                return true;
+            }
+
             private static void Load()
             {
                 if (s_fits != null)
@@ -760,7 +804,11 @@ namespace TSViewMod
         // Bump when the fitting method changes so old entries are recomputed.
         private const string CacheVersion = "2";
 
-        private const long FrameBudgetMs = 4;
+        // Survey runs at 10 fps with nobody playing, so it can spend far longer per frame.
+        private static long FrameBudgetMs => Survey.Active ? 80 : 4;
+
+        // Added to the score of orientations other than the one most rooms use (see MajorityOrientation).
+        private const float OrientationPenalty = 0.15f;
 
         private static IEnumerator FitShape(WorldMask world, MapMask map, List<KeyValuePair<string, Vector2>> doors, List<RoomShape> rooms, int u, int v, StringBuilder log, Fit[] result)
         {
@@ -773,6 +821,11 @@ namespace TSViewMod
             float diag = roomRect.Size.magnitude;
             var slice = Stopwatch.StartNew();
             var best = new Fit { score = float.MaxValue };
+            int expected = FitCache.MajorityOrientation();
+            if (expected >= 0)
+            {
+                log.Append("\n    expected orientation o").Append(expected);
+            }
             for (int o = 0; o < 8; o++)
             {
                 var orientBest = new Fit { score = float.MaxValue };
@@ -825,7 +878,7 @@ namespace TSViewMod
                 // Doors decide between mirror/rotation candidates whose shapes overlap about equally: each door's
                 // spawn point must land next to the room it leads to. Shape overlap only breaks remaining ties.
                 float doorPenalty = DoorPenalty(orientBest, doors, rooms, u, v, roomRect, diag);
-                orientBest.score = DoorWeight * doorPenalty + (1f - orientBest.iou);
+                orientBest.score = DoorWeight * doorPenalty + (1f - orientBest.iou) + (expected >= 0 && o != expected ? OrientationPenalty : 0f);
                 log.Append("\n    o").Append(o).Append(" IoU ").Append(orientBest.iou.ToString("0.000"))
                     .Append(" doors ").Append(doorPenalty.ToString("0.000")).Append(" score ").Append(orientBest.score.ToString("0.000"));
                 if (orientBest.score < best.score)

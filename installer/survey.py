@@ -8,7 +8,7 @@
    game's own scripts may autosave while it teleports around).
 3. Pauses the ts-save-backup.path watcher so survey saves don't fill the backup history.
 4. Writes the survey flag and launches the game through Steam, at low CPU priority; the mod continues the save,
-   visits every room on the map, writes TSViewMod_survey_report.txt and quits by itself (about 5-10 minutes).
+   visits every room on the map, writes TSViewMod_survey_report.txt and quits by itself (about 10-20 minutes; reruns only visit unfitted rooms).
 5. Restores the saves and registry, re-enables the watcher and prints the report.
 """
 import argparse
