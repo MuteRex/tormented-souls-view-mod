@@ -122,6 +122,7 @@ namespace TSViewMod
             UpdateVoidColour(live && m_mode == ViewMode.ThirdPerson ? brain.OutputCamera : null);
             if (!canTakeOver)
             {
+                UpdateCursorLock(false);
                 m_snapNextFrame = true;
                 return;
             }
@@ -130,11 +131,46 @@ namespace TSViewMod
             // while inspecting/rotating items, in menus and during pickups (which share the look input).
             PlayerMovement movement = m_player.GetPlayerMovement();
             bool freePlay = movement == null || !movement.GamePaused;
-            if (live && freePlay && Time.timeScale > 0f)
+            bool looking = live && freePlay && Time.timeScale > 0f;
+            UpdateCursorLock(looking && m_config.LockCursor && Application.isFocused);
+            if (looking)
             {
                 ReadLookInput();
             }
             PlaceCamera(brain);
+        }
+
+        // While walking around in the mod's views the pointer is captured (so mouse look doesn't stop at the window
+        // edge) and hidden; in menus, inventory, map, inspect and the game's own cameras it goes back to how the
+        // game had it.
+        private bool m_cursorLocked;
+        private CursorLockMode m_cursorMode;
+
+        private void UpdateCursorLock(bool want)
+        {
+            if (want && !m_cursorLocked)
+            {
+                m_cursorMode = Cursor.lockState;
+                m_cursorLocked = true;
+            }
+            else if (!want && m_cursorLocked)
+            {
+                Cursor.lockState = m_cursorMode;
+                m_cursorLocked = false;
+                return;
+            }
+            if (m_cursorLocked && Cursor.lockState != CursorLockMode.Locked)
+            {
+                Cursor.lockState = CursorLockMode.Locked;
+            }
+        }
+
+        private void OnApplicationFocus(bool focused)
+        {
+            if (!focused)
+            {
+                UpdateCursorLock(false);
+            }
         }
 
         private void OnGUI()
@@ -245,20 +281,19 @@ namespace TSViewMod
 
         private void ReadLookInput()
         {
-            float lookX = Input.GetAxisRaw("Mouse X") * m_config.MouseSensitivity;
-            float lookY = Input.GetAxisRaw("Mouse Y") * m_config.MouseSensitivity;
+            // Mouse is 1:1 (never speed-capped); the stick is capped at MaxTurnSpeed. Each has its own invert.
+            float mouseX = Input.GetAxisRaw("Mouse X") * m_config.MouseSensitivity;
+            float mouseY = Input.GetAxisRaw("Mouse Y") * m_config.MouseSensitivity * (m_config.MouseInvertY ? -1f : 1f);
             Vector2 stick = RightStick();
-            lookX += stick.x * m_config.StickSensitivity * Time.unscaledDeltaTime;
-            lookY += stick.y * m_config.StickSensitivity * 0.75f * Time.unscaledDeltaTime;
-            if (m_config.InvertY)
-            {
-                lookY = -lookY;
-            }
+            float stickX = stick.x * m_config.StickSensitivity * Time.unscaledDeltaTime;
+            float stickY = stick.y * m_config.StickSensitivity * 0.75f * Time.unscaledDeltaTime * (m_config.InvertY ? -1f : 1f);
             if (m_config.MaxTurnSpeed > 0f)
             {
                 float maxStep = m_config.MaxTurnSpeed * Time.unscaledDeltaTime;
-                lookX = Mathf.Clamp(lookX, -maxStep, maxStep);
+                stickX = Mathf.Clamp(stickX, -maxStep, maxStep);
             }
+            float lookX = mouseX + stickX;
+            float lookY = mouseY + stickY;
             if (Mathf.Abs(lookX) + Mathf.Abs(lookY) > 0.05f)
             {
                 m_lastLookInput = Time.unscaledTime;

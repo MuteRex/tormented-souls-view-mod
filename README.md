@@ -17,7 +17,7 @@ entries in Unity's startup lists.
 | **F6** (keyboard) or Options → View Mod → Camera (controller) | Switch camera: Original ↔ Third person (first person: coming soon) |
 | Mouse / right stick | Look around (third/first person) |
 | **F7** | Map marker on/off |
-| **R**, middle mouse or right-stick click (only while inspecting) | Reset the item's rotation |
+| **R**, middle mouse or right-stick click (only while inspecting) | Reset the item's rotation (key and mouse button are set in the cfg) |
 | **F8** | Debug overlay (scene, position, camera, map fit) + blue door markers on the map |
 | **F9** | Debug snapshot: screenshot + state text in `<game>/TSViewMod_debug/` |
 
@@ -44,9 +44,13 @@ To uninstall: `python3 installer/install.py uninstall --game "/path/to/Tormented
 
 ## Settings
 
-`TormentedSouls_Data/TSViewMod.cfg` is created on first run. It holds the keys, mouse/stick sensitivity,
-invert Y, camera distance, shoulder offset, field of view, whether the body is hidden in first person, the map
-marker and the inspect reset. Restart the game after editing it.
+`TormentedSouls_Data/TSViewMod.cfg` is created on first run. It holds the keys, separate mouse and stick
+sensitivity and invert Y, mouse capture (`LockCursor`), camera distance, shoulder offset, field of view, whether
+the body is hidden in first person, the map marker and the inspect reset (`InspectReset`, `ResetRotationKey`,
+`ResetRotationMouseButton`). Most of these are also in Options → View Mod. Restart the game after editing the file.
+
+Mouse and keyboard: in the mod's views the pointer is captured and hidden while you walk around, and released in
+menus, the map, inspect and the game's own cameras. The mouse turns the camera 1:1; only the stick is speed-capped.
 
 Map fits are cached in `TormentedSouls_Data/TSViewMod_mapcache.txt`. Delete that file to recompute them.
 

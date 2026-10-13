@@ -53,7 +53,7 @@ namespace TSViewMod
             {
                 return;
             }
-            bool pressed = Input.GetKeyDown(config.ResetRotationKey) || Input.GetMouseButtonDown(2) || ViewCamera.RightStickClicked();
+            bool pressed = Input.GetKeyDown(config.ResetRotationKey) || config.ResetRotationMouseButton >= 0 && config.ResetRotationMouseButton <= 6 && Input.GetMouseButtonDown(config.ResetRotationMouseButton) || ViewCamera.RightStickClicked();
             if (!pressed)
             {
                 return;

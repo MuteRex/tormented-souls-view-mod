@@ -15,6 +15,8 @@ namespace TSViewMod
         public float MouseSensitivity = 2.5f;
         public float StickSensitivity = 160f;
         public bool InvertY = false;
+        public bool MouseInvertY = false;
+        public bool LockCursor = true;
         public float OrbitLimit = 120f;
         public float MaxTurnSpeed = 300f;
         public bool AutoFollow = true;
@@ -29,6 +31,7 @@ namespace TSViewMod
         public bool MapMarker = true;
         public bool InspectReset = true;
         public KeyCode ResetRotationKey = KeyCode.R;
+        public int ResetRotationMouseButton = 2;
         public KeyCode DebugOverlayKey = KeyCode.F8;
         public KeyCode SnapshotKey = KeyCode.F9;
 
@@ -64,6 +67,8 @@ namespace TSViewMod
                 config.MouseSensitivity = GetFloat(values, "MouseSensitivity", config.MouseSensitivity);
                 config.StickSensitivity = GetFloat(values, "StickSensitivity", config.StickSensitivity);
                 config.InvertY = GetBool(values, "InvertY", config.InvertY);
+                config.MouseInvertY = GetBool(values, "MouseInvertY", config.InvertY); // older files: one shared setting
+                config.LockCursor = GetBool(values, "LockCursor", config.LockCursor);
                 config.OrbitLimit = GetFloat(values, "OrbitLimit", config.OrbitLimit);
                 config.MaxTurnSpeed = GetFloat(values, "MaxTurnSpeed", config.MaxTurnSpeed);
                 config.AutoFollow = GetBool(values, "AutoFollow", config.AutoFollow);
@@ -78,6 +83,7 @@ namespace TSViewMod
                 config.MapMarker = GetBool(values, "MapMarker", config.MapMarker);
                 config.InspectReset = GetBool(values, "InspectReset", config.InspectReset);
                 config.ResetRotationKey = GetKey(values, "ResetRotationKey", config.ResetRotationKey);
+                config.ResetRotationMouseButton = (int)GetFloat(values, "ResetRotationMouseButton", config.ResetRotationMouseButton);
                 config.DebugOverlayKey = GetKey(values, "DebugOverlayKey", config.DebugOverlayKey);
                 config.SnapshotKey = GetKey(values, "SnapshotKey", config.SnapshotKey);
                 // Rewrite so settings added in newer versions appear in the file (values are kept).
@@ -101,11 +107,15 @@ namespace TSViewMod
                 "MapMarkerKey=" + MapMarkerKey,
                 "# Original, ThirdPerson or FirstPerson",
                 "StartView=" + StartView,
+                "# Camera speed for mouse and for the right stick (set separately), and Y inversion for each.",
                 "MouseSensitivity=" + MouseSensitivity.ToString(inv),
                 "StickSensitivity=" + StickSensitivity.ToString(inv),
                 "InvertY=" + InvertY,
+                "MouseInvertY=" + MouseInvertY,
+                "# Third/first person: capture and hide the mouse pointer while you walk around (released in menus).",
+                "LockCursor=" + LockCursor,
                 "# Third person: how far (degrees) the camera may swing round from behind her (0 = no limit),",
-                "# and the fastest it may turn (degrees per second).",
+                "# and the fastest the right stick may turn it (degrees per second; the mouse is never capped).",
                 "OrbitLimit=" + OrbitLimit.ToString(inv),
                 "MaxTurnSpeed=" + MaxTurnSpeed.ToString(inv),
                 "# Third person: while she moves and you aren't steering the camera, it swings round behind her.",
@@ -121,9 +131,11 @@ namespace TSViewMod
                 "HideBodyInFirstPerson=" + HideBodyInFirstPerson,
                 "# Red dot on your current room in the map screen.",
                 "MapMarker=" + MapMarker,
-                "# While inspecting an item: this key, middle mouse or right-stick click resets its rotation.",
+                "# While inspecting an item: this key, this mouse button (0 left, 1 right, 2 middle, 3-6 extra, -1 none)",
+                "# or right-stick click resets its rotation.",
                 "InspectReset=" + InspectReset,
                 "ResetRotationKey=" + ResetRotationKey,
+                "ResetRotationMouseButton=" + ResetRotationMouseButton,
                 "# Debugging: on-screen readout (+ door markers on the map), and screenshot + state dump to TSViewMod_debug/.",
                 "DebugOverlayKey=" + DebugOverlayKey,
                 "SnapshotKey=" + SnapshotKey,

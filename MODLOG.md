@@ -184,3 +184,6 @@ User confirmed the mod is in a good, playable state (third-person camera, auto f
 
 ## v1.2.1 (2026-10-13)
 RE2-style turning (from the user's RE2 clip): the orbit limit now only stops the stick/mouse swinging the camera past it; her own turning no longer drags the camera round at 360 deg/s, so she can run toward the camera like Leon does. Auto follow still recentres on curves.
+
+## v1.2.2 (2026-10-13)
+Mouse and keyboard: pointer captured/hidden while walking in the mod views (LockCursor; restored to the game's mode in menus, map, inspect, game cameras, alt-tab). Mouse no longer limited by MaxTurnSpeed. Separate MouseSensitivity / MouseInvertY; Options rows now Stick Speed, Mouse Speed, Invert Y (Off/Stick/Mouse/Both). Reset View on/off moved to cfg only to keep 10 rows. ResetRotationMouseButton in cfg.

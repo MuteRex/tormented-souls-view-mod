@@ -307,15 +307,17 @@ namespace TSViewMod
                 Def("Height", () => Level(Cfg.PivotHeight, 1.15f, 0.1f), d => Cfg.PivotHeight = Step(Cfg.PivotHeight, d, 0.1f, 1.15f, 1.95f)),
                 Def("Shoulder", () => Cycle(new[] { "Auto", "Right", "Left" }, Cfg.ShoulderSide, 0), d => Cfg.ShoulderSide = Cycle(new[] { "Auto", "Right", "Left" }, Cfg.ShoulderSide, d)),
                 Def("Field of View", () => Cfg.FieldOfView.ToString("0", Inv), d => Cfg.FieldOfView = Step(Cfg.FieldOfView, d, 5f, 45f, 90f)),
-                Def("Sensitivity", () => Level(Cfg.StickSensitivity, 40f, 40f), d =>
+                Def("Stick Speed", () => Level(Cfg.StickSensitivity, 40f, 40f), d => Cfg.StickSensitivity = Step(Cfg.StickSensitivity, d, 40f, 40f, 400f)),
+                Def("Mouse Speed", () => Level(Cfg.MouseSensitivity, 0.5f, 0.5f), d => Cfg.MouseSensitivity = Step(Cfg.MouseSensitivity, d, 0.5f, 0.5f, 5f)),
+                // One row for both devices keeps the page at the game's 10-row density.
+                Def("Invert Y", () => InvertLabel(), d =>
                 {
-                    Cfg.StickSensitivity = Step(Cfg.StickSensitivity, d, 40f, 40f, 400f);
-                    Cfg.MouseSensitivity = Cfg.StickSensitivity / 64f; // mouse follows the stick (160 <-> 2.5)
+                    int i = ((Cfg.InvertY ? 1 : 0) + (Cfg.MouseInvertY ? 2 : 0) + (d == 0 ? 1 : d) + 4) % 4;
+                    Cfg.InvertY = (i & 1) != 0;
+                    Cfg.MouseInvertY = (i & 2) != 0;
                 }),
-                Def("Invert Y", () => OnOff(Cfg.InvertY), d => Cfg.InvertY = !Cfg.InvertY),
                 Def("Auto Follow", () => OnOff(Cfg.AutoFollow), d => Cfg.AutoFollow = !Cfg.AutoFollow),
                 Def("Map Marker", () => OnOff(Cfg.MapMarker), d => Cfg.MapMarker = !Cfg.MapMarker),
-                Def("Reset View", () => OnOff(Cfg.InspectReset), d => Cfg.InspectReset = !Cfg.InspectReset),
             };
             Vector3 top = first.transform.localPosition;
             for (int i = 0; i < defs.Count; i++)
@@ -355,6 +357,11 @@ namespace TSViewMod
         }
 
         // Settings shown as 1..10 steps like the game's own sliders, rather than metres/raw numbers.
+        private static string InvertLabel()
+        {
+            return Cfg.InvertY ? (Cfg.MouseInvertY ? "Both" : "Stick") : (Cfg.MouseInvertY ? "Mouse" : "Off");
+        }
+
         private static string Level(float value, float min, float step)
         {
             return (Mathf.RoundToInt((value - min) / step) + 1).ToString(Inv);
