@@ -313,7 +313,6 @@ namespace TSViewMod
                     Cfg.MouseSensitivity = Cfg.StickSensitivity / 64f; // mouse follows the stick (160 <-> 2.5)
                 }),
                 Def("Invert Y", () => OnOff(Cfg.InvertY), d => Cfg.InvertY = !Cfg.InvertY),
-                Def("R3 Camera Switch", () => OnOff(Cfg.ControllerR3CyclesView), d => Cfg.ControllerR3CyclesView = !Cfg.ControllerR3CyclesView),
                 Def("Map Marker", () => OnOff(Cfg.MapMarker), d => Cfg.MapMarker = !Cfg.MapMarker),
                 Def("Reset View", () => OnOff(Cfg.InspectReset), d => Cfg.InspectReset = !Cfg.InspectReset),
             };

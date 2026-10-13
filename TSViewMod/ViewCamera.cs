@@ -79,9 +79,9 @@ namespace TSViewMod
 
         private void Update()
         {
-            // R3 is shared with the inspect reset, so it only cycles views during free play.
-            bool r3 = m_config.ControllerR3CyclesView && InFreePlay() && RightStickClicked();
-            if (Input.GetKeyDown(m_config.CycleViewKey) || r3)
+            // Keyboard shortcut only; on controller the camera is changed in Options > View Mod
+            // (right-stick click is reserved for Reset View while inspecting).
+            if (Input.GetKeyDown(m_config.CycleViewKey))
             {
                 SetMode(Next(m_mode, 1));
             }

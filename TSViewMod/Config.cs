@@ -11,7 +11,6 @@ namespace TSViewMod
     {
         public KeyCode CycleViewKey = KeyCode.F6;
         public KeyCode MapMarkerKey = KeyCode.F7;
-        public bool ControllerR3CyclesView = true;
         public string StartView = "Original";
         public float MouseSensitivity = 2.5f;
         public float StickSensitivity = 160f;
@@ -59,7 +58,6 @@ namespace TSViewMod
                 }
                 config.CycleViewKey = GetKey(values, "CycleViewKey", config.CycleViewKey);
                 config.MapMarkerKey = GetKey(values, "MapMarkerKey", config.MapMarkerKey);
-                config.ControllerR3CyclesView = GetBool(values, "ControllerR3CyclesView", config.ControllerR3CyclesView);
                 config.StartView = values.TryGetValue("StartView", out string start) ? start : config.StartView;
                 config.MouseSensitivity = GetFloat(values, "MouseSensitivity", config.MouseSensitivity);
                 config.StickSensitivity = GetFloat(values, "StickSensitivity", config.StickSensitivity);
@@ -97,8 +95,6 @@ namespace TSViewMod
                 "# Keys use Unity KeyCode names (F6, F7, V, Tab, ...).",
                 "CycleViewKey=" + CycleViewKey,
                 "MapMarkerKey=" + MapMarkerKey,
-                "# Click the right stick to cycle views.",
-                "ControllerR3CyclesView=" + ControllerR3CyclesView,
                 "# Original, ThirdPerson or FirstPerson",
                 "StartView=" + StartView,
                 "MouseSensitivity=" + MouseSensitivity.ToString(inv),

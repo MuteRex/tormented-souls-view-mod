@@ -14,10 +14,10 @@ entries in Unity's startup lists.
 
 | Input | Action |
 |---|---|
-| **F6** or right-stick click (while walking) | Cycle camera: Original → Third person → First person |
+| **F6** (keyboard) or Options → View Mod → Camera (controller) | Switch camera: Original ↔ Third person (first person: coming soon) |
 | Mouse / right stick | Look around (third/first person) |
 | **F7** | Map marker on/off |
-| **R**, middle mouse or right-stick click (while inspecting) | Reset the item's rotation |
+| **R**, middle mouse or right-stick click (only while inspecting) | Reset the item's rotation |
 | **F8** | Debug overlay (scene, position, camera, map fit) + blue door markers on the map |
 | **F9** | Debug snapshot: screenshot + state text in `<game>/TSViewMod_debug/` |
 

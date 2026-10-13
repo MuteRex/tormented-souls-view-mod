@@ -175,3 +175,4 @@ Offline room extraction: precompute world->map fits for every room so unvisited 
   NavMesh.Raycast); output camera clears to black while the mod camera is live (restored after); third-person upward
   pitch limited to -25 (many rooms have no ceiling); OrbitLimit 120 deg from her back (camera follows round at
   360 deg/s when exceeded) and MaxTurnSpeed 300 deg/s, both in cfg.
+- v1.1.2: user: right-stick click must only be Reset View; controller camera switching only via Options > View Mod. Removed R3 view cycling, its cfg key and menu row.
