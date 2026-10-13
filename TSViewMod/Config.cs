@@ -17,6 +17,8 @@ namespace TSViewMod
         public bool InvertY = false;
         public float OrbitLimit = 120f;
         public float MaxTurnSpeed = 300f;
+        public bool AutoFollow = true;
+        public float AutoFollowSpeed = 120f;
         public float ThirdPersonDistance = 1.4f;
         public float ShoulderOffset = 0.45f;
         public string ShoulderSide = "Auto";
@@ -64,6 +66,8 @@ namespace TSViewMod
                 config.InvertY = GetBool(values, "InvertY", config.InvertY);
                 config.OrbitLimit = GetFloat(values, "OrbitLimit", config.OrbitLimit);
                 config.MaxTurnSpeed = GetFloat(values, "MaxTurnSpeed", config.MaxTurnSpeed);
+                config.AutoFollow = GetBool(values, "AutoFollow", config.AutoFollow);
+                config.AutoFollowSpeed = GetFloat(values, "AutoFollowSpeed", config.AutoFollowSpeed);
                 config.ThirdPersonDistance = GetFloat(values, "ThirdPersonDistance", config.ThirdPersonDistance);
                 config.ShoulderOffset = GetFloat(values, "ShoulderOffset", config.ShoulderOffset);
                 config.ShoulderSide = values.TryGetValue("ShoulderSide", out string side) ? side : config.ShoulderSide;
@@ -104,6 +108,9 @@ namespace TSViewMod
                 "# and the fastest it may turn (degrees per second).",
                 "OrbitLimit=" + OrbitLimit.ToString(inv),
                 "MaxTurnSpeed=" + MaxTurnSpeed.ToString(inv),
+                "# Third person: while she moves and you aren't steering the camera, it swings round behind her.",
+                "AutoFollow=" + AutoFollow,
+                "AutoFollowSpeed=" + AutoFollowSpeed.ToString(inv),
                 "ThirdPersonDistance=" + ThirdPersonDistance.ToString(inv),
                 "ShoulderOffset=" + ShoulderOffset.ToString(inv),
                 "# Auto (swaps away from walls), Right or Left",

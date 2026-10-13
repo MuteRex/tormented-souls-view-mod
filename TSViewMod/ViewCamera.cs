@@ -47,6 +47,9 @@ namespace TSViewMod
         private float m_side = 1f;
         private float m_sideTarget = 1f;
         private float m_sideCheckAt;
+        private float m_lastLookInput = -10f;
+        private Vector3 m_lastPlayerPos;
+        private float m_playerSpeed;
         private float m_sideVelocity;
         private float m_distanceVelocity;
         private float m_blockedSince = -1f;
@@ -256,6 +259,10 @@ namespace TSViewMod
                 float maxStep = m_config.MaxTurnSpeed * Time.unscaledDeltaTime;
                 lookX = Mathf.Clamp(lookX, -maxStep, maxStep);
             }
+            if (Mathf.Abs(lookX) + Mathf.Abs(lookY) > 0.05f)
+            {
+                m_lastLookInput = Time.unscaledTime;
+            }
             m_yaw += lookX;
             m_pitch = m_mode == ViewMode.FirstPerson
                 ? Mathf.Clamp(m_pitch - lookY, -80f, 75f)
@@ -272,7 +279,27 @@ namespace TSViewMod
                 m_pitch = m_mode == ViewMode.FirstPerson ? 0f : 12f;
                 m_pivot = playerTransform.position + Vector3.up * m_config.PivotHeight;
                 m_smoothDistance = -1f; // new room / view: start at the right distance, no easing
+                m_lastPlayerPos = playerTransform.position;
+                m_playerSpeed = 0f;
                 m_snapNextFrame = false;
+            }
+            // How fast she's moving (smoothed), for the auto follow below.
+            float frameDt = Mathf.Max(Time.unscaledDeltaTime, 1e-4f);
+            Vector3 moved = playerTransform.position - m_lastPlayerPos;
+            moved.y = 0f;
+            m_playerSpeed = Mathf.Lerp(m_playerSpeed, Mathf.Min(moved.magnitude / frameDt, 10f), 1f - Mathf.Exp(-8f * frameDt));
+            m_lastPlayerPos = playerTransform.position;
+            if (m_mode == ViewMode.ThirdPerson && m_config.AutoFollow && Time.unscaledTime - m_lastLookInput > 0.6f && m_playerSpeed > 0.4f)
+            {
+                // Lazy follow: when she runs a curve or a circle the camera swings round behind her instead of
+                // staying put while she circles it. Not when she walks back toward the camera.
+                float facing = playerTransform.eulerAngles.y;
+                float rel = Mathf.DeltaAngle(m_yaw, facing);
+                if (Mathf.Abs(rel) < 150f)
+                {
+                    float rate = m_config.AutoFollowSpeed * Mathf.Clamp01(m_playerSpeed / 2f) * Mathf.Clamp(Mathf.Abs(rel) / 60f, 0.25f, 1.5f);
+                    m_yaw = Mathf.MoveTowardsAngle(m_yaw, facing, rate * frameDt);
+                }
             }
             if (m_mode == ViewMode.ThirdPerson && m_config.OrbitLimit > 0f && m_config.OrbitLimit < 180f)
             {
