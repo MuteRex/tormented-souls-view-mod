@@ -161,3 +161,4 @@ Offline room extraction: precompute world->map fits for every room so unvisited 
   OnPressedBackOnPanel, NavMenuItems insert before Back), not via panelsData. Changes apply live and save the cfg.
   Config.ShoulderSide (Auto/Right/Left); map marker follows config.MapMarker. Needs Sirenix.Serialization ref
   (NavItemButton : SerializedMonoBehaviour). Logs a hierarchy dump on injection for layout fixes. Untested.
+- v1.0.10: page redesign after user feedback ('looks like shit'): ◀ ▶ button texts were overwritten with labels (only non-button, non-value text is the label now); 10 short rows (Camera, Distance, Height, Shoulder, Field of View, Sensitivity, Invert Y, R3 Camera Switch, Map Marker, Reset View), 1-10 levels instead of metres; rows live in a GridLayoutGroup (Scaled Down), spacing 141 of 1821. Row structure logged.

@@ -279,13 +279,8 @@ namespace TSViewMod
             {
                 loose[0].SetText("View Mod");
             }
-            // 13 rows must fit where the template's few rows were.
-            float height = ((RectTransform)transform).rect.height;
-            if (height > 100f && spacing * 13f > height * 0.85f)
-            {
-                spacing = height * 0.85f / 13f;
-            }
 
+            Loader.Log("options page: template row\n" + OptionsPage.Dump(first.transform, 0, 6));
             AddRows(first, spacing);
             Loader.Log("options page: built " + m_rows.Count + " rows from " + templateName + ", spacing " + spacing.ToString("0") + "\n" + OptionsPage.Dump(transform, 0, 3));
         }
@@ -300,18 +295,20 @@ namespace TSViewMod
                     ViewCamera.Instance.SetMode(mode);
                     Cfg.StartView = mode.ToString();
                 }),
-                Def("Camera Distance", () => Cfg.ThirdPersonDistance.ToString("0.0", Inv) + " m", d => Cfg.ThirdPersonDistance = Step(Cfg.ThirdPersonDistance, d, 0.1f, 0.8f, 3.5f)),
-                Def("Shoulder", () => Cfg.ShoulderSide, d => Cfg.ShoulderSide = Cycle(new[] { "Auto", "Right", "Left" }, Cfg.ShoulderSide, d)),
-                Def("Shoulder Offset", () => Cfg.ShoulderOffset.ToString("0.00", Inv) + " m", d => Cfg.ShoulderOffset = Step(Cfg.ShoulderOffset, d, 0.05f, 0f, 0.9f)),
-                Def("Camera Height", () => Cfg.PivotHeight.ToString("0.00", Inv) + " m", d => Cfg.PivotHeight = Step(Cfg.PivotHeight, d, 0.05f, 1.1f, 1.9f)),
-                Def("Field of View", () => Cfg.FieldOfView.ToString("0", Inv), d => Cfg.FieldOfView = Step(Cfg.FieldOfView, d, 5f, 40f, 95f)),
-                Def("First Person FOV", () => Cfg.FirstPersonFieldOfView.ToString("0", Inv), d => Cfg.FirstPersonFieldOfView = Step(Cfg.FirstPersonFieldOfView, d, 5f, 50f, 100f)),
-                Def("Stick Sensitivity", () => Cfg.StickSensitivity.ToString("0", Inv), d => Cfg.StickSensitivity = Step(Cfg.StickSensitivity, d, 20f, 40f, 400f)),
-                Def("Mouse Sensitivity", () => Cfg.MouseSensitivity.ToString("0.0", Inv), d => Cfg.MouseSensitivity = Step(Cfg.MouseSensitivity, d, 0.5f, 0.5f, 8f)),
+                // Same short-label style and density as the game's own pages; rarer settings stay in TSViewMod.cfg.
+                Def("Distance", () => Level(Cfg.ThirdPersonDistance, 0.8f, 0.2f), d => Cfg.ThirdPersonDistance = Step(Cfg.ThirdPersonDistance, d, 0.2f, 0.8f, 2.6f)),
+                Def("Height", () => Level(Cfg.PivotHeight, 1.15f, 0.1f), d => Cfg.PivotHeight = Step(Cfg.PivotHeight, d, 0.1f, 1.15f, 1.95f)),
+                Def("Shoulder", () => Cycle(new[] { "Auto", "Right", "Left" }, Cfg.ShoulderSide, 0), d => Cfg.ShoulderSide = Cycle(new[] { "Auto", "Right", "Left" }, Cfg.ShoulderSide, d)),
+                Def("Field of View", () => Cfg.FieldOfView.ToString("0", Inv), d => Cfg.FieldOfView = Step(Cfg.FieldOfView, d, 5f, 45f, 90f)),
+                Def("Sensitivity", () => Level(Cfg.StickSensitivity, 40f, 40f), d =>
+                {
+                    Cfg.StickSensitivity = Step(Cfg.StickSensitivity, d, 40f, 40f, 400f);
+                    Cfg.MouseSensitivity = Cfg.StickSensitivity / 64f; // mouse follows the stick (160 <-> 2.5)
+                }),
                 Def("Invert Y", () => OnOff(Cfg.InvertY), d => Cfg.InvertY = !Cfg.InvertY),
-                Def("Right Stick Click Cycles Camera", () => OnOff(Cfg.ControllerR3CyclesView), d => Cfg.ControllerR3CyclesView = !Cfg.ControllerR3CyclesView),
+                Def("R3 Camera Switch", () => OnOff(Cfg.ControllerR3CyclesView), d => Cfg.ControllerR3CyclesView = !Cfg.ControllerR3CyclesView),
                 Def("Map Marker", () => OnOff(Cfg.MapMarker), d => Cfg.MapMarker = !Cfg.MapMarker),
-                Def("Inspect Reset View", () => OnOff(Cfg.InspectReset), d => Cfg.InspectReset = !Cfg.InspectReset),
+                Def("Reset View", () => OnOff(Cfg.InspectReset), d => Cfg.InspectReset = !Cfg.InspectReset),
             };
             Vector3 top = first.transform.localPosition;
             for (int i = 0; i < defs.Count; i++)
@@ -321,10 +318,10 @@ namespace TSViewMod
                 control.transform.localPosition = top + Vector3.down * spacing * i;
                 Row row = defs[i].Value;
                 row.control = control;
-                // Label = the row's text that isn't the value text.
+                // Label = the row's text that isn't the value and isn't part of the ◀ ▶ buttons.
                 foreach (TMP_Text text in control.GetComponentsInChildren<TMP_Text>(true))
                 {
-                    if (text != control.selectorText)
+                    if (text != control.selectorText && !Inside(text, control.Button_Minus) && !Inside(text, control.Button_Plus) && !Inside(text, control.Button_Center))
                     {
                         text.SetText(defs[i].Key);
                     }
@@ -343,6 +340,17 @@ namespace TSViewMod
                 m_nav.Add(control.GetNavItem());
                 Refresh(row);
             }
+        }
+
+        private static bool Inside(Component child, Component parent)
+        {
+            return parent != null && child.transform.IsChildOf(parent.transform);
+        }
+
+        // Settings shown as 1..10 steps like the game's own sliders, rather than metres/raw numbers.
+        private static string Level(float value, float min, float step)
+        {
+            return (Mathf.RoundToInt((value - min) / step) + 1).ToString(Inv);
         }
 
         private static KeyValuePair<string, Row> Def(string label, Func<string> value, Action<int> change)
