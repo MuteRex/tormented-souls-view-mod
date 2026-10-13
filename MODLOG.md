@@ -199,3 +199,6 @@ Public release prep: Linux only (Windows in progress), no trailer. Comments cond
 
 ## v1.3.3-beta (2026-10-13)
 Labelled beta. Windows: installer/install.ps1 + install.bat (Steam libraryfolders.vdf / GOG registry detection, UTF-8 no BOM, PS 5.1 array fix); verified with pwsh 7.6 on Linux to produce the same JSON as install.py, idempotent, uninstall restores originals. Not run on native Windows. Mod: Loader.DataDir falls back to persistentDataPath when TormentedSouls_Data is read-only (seeded from installed copies); Config.Save no longer throws.
+
+## v1.3.4-beta (2026-10-13)
+Options -> "Keyboard & Mouse" category (second injected category; OptionsPage.AddCategory). Selector row (Movement & Combat / Menus & Items / View Mod) + up to 7 read-only rows (arrows hidden, not in nav). Game keys read live from Rewired keyboard+mouse maps (KeyBindings.cs); action names: Run, Fast Turn, Aim, Shoot, Reload, Confirm, Cancel, Menu (inventory), LanternSwitch (map), Options (pause), SkipLeft/SkipRight, DPAD axes (move). The game has its own hidden ControllerTypePanelKeyboard (always disabled in OnEnter) - unused.

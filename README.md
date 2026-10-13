@@ -21,6 +21,8 @@ Unity 2020.3 / Mono).
   the current room tinted red.
 - **RE2-style Reset View while inspecting items.** Maps turn to lie flat and face you. A prompt appears in the
   button bar.
+- **Options → Keyboard & Mouse** page listing every key and mouse binding (the game's, read live, and the
+  mod's), like the game's controller page.
 - **Mouse and keyboard:** pointer captured while you walk, 1:1 mouse look, and camera-relative WASD movement
   (walk, or run while holding Run).
 

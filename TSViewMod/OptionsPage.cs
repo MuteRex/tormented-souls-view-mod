@@ -9,8 +9,8 @@ using UnityEngine.UI;
 
 namespace TSViewMod
 {
-    // Adds a "View Mod" category to Options, cloned from the game's own button and rows so it looks and navigates
-    // natively. Wired through the controller's private methods and nav list (not panelsData).
+    // Adds "View Mod" and "Keyboard & Mouse" categories to Options, cloned from the game's own button and rows so
+    // they look and navigate natively. Wired through the controller's private methods and nav list (not panelsData).
     public class OptionsPage : MonoBehaviour
     {
         private class Injected
@@ -41,11 +41,7 @@ namespace TSViewMod
                 }
                 try
                 {
-                    Injected injected = Inject(controller);
-                    if (injected != null)
-                    {
-                        m_injected.Add(injected);
-                    }
+                    m_injected.AddRange(Inject(controller));
                 }
                 catch (Exception e)
                 {
@@ -58,12 +54,13 @@ namespace TSViewMod
             }
         }
 
-        private static Injected Inject(OptionsMenuController controller)
+        private static List<Injected> Inject(OptionsMenuController controller)
         {
+            var added = new List<Injected>();
             List<OptionMenuPanelData> panels = controller.panelsData;
             if (panels == null || panels.Count == 0)
             {
-                return null;
+                return added;
             }
             // Template: the panel with the most rows.
             OptionMenuPanelData template = null;
@@ -81,38 +78,52 @@ namespace TSViewMod
             if (template == null || last.menuButton == null)
             {
                 Loader.Log("options page: no template panel in " + controller.name);
-                return null;
+                return added;
             }
+            Vector3 step = panels.Count >= 2 && panels[panels.Count - 2].menuButton != null
+                ? last.menuButton.transform.localPosition - panels[panels.Count - 2].menuButton.transform.localPosition
+                : Vector3.zero;
+            Transform anchor = last.menuButton.transform;
+            foreach (PanelKind kind in new[] { PanelKind.Settings, PanelKind.Keys })
+            {
+                Injected injected = AddCategory(controller, template.panelController, last.menuButton.gameObject, anchor, step, kind);
+                added.Add(injected);
+                anchor = injected.button.transform;
+            }
+            Loader.Log("options page: added View Mod + Keyboard & Mouse to " + controller.name + " (template " + template.panelController.name + ", " + most + " rows)\n" + Dump(controller.transform, 0, 4));
+            return added;
+        }
+
+        private static Injected AddCategory(OptionsMenuController controller, BaseMenuPanelController templatePanel, GameObject buttonTemplate, Transform anchor, Vector3 step, PanelKind kind)
+        {
+            string title = kind == PanelKind.Keys ? "Keyboard & Mouse" : "View Mod";
 
             // --- category button ---
-            Transform lastButton = last.menuButton.transform;
-            GameObject buttonGo = Instantiate(last.menuButton.gameObject, lastButton.parent, false);
-            buttonGo.name = "TSViewMod_MenuButton";
+            GameObject buttonGo = Instantiate(buttonTemplate, anchor.parent, false);
+            buttonGo.name = "TSViewMod_MenuButton_" + kind;
             StripLocalisation(buttonGo);
             var button = buttonGo.GetComponent<ItemOptionMenuButtonBehaviour>();
-            if (lastButton.parent.GetComponent<LayoutGroup>() != null)
+            if (anchor.parent.GetComponent<LayoutGroup>() != null)
             {
-                buttonGo.transform.SetSiblingIndex(lastButton.GetSiblingIndex() + 1);
+                buttonGo.transform.SetSiblingIndex(anchor.GetSiblingIndex() + 1);
             }
-            else if (panels.Count >= 2 && panels[panels.Count - 2].menuButton != null)
+            else if (step != Vector3.zero)
             {
-                Vector3 step = lastButton.localPosition - panels[panels.Count - 2].menuButton.transform.localPosition;
-                buttonGo.transform.localPosition = lastButton.localPosition + step;
+                buttonGo.transform.localPosition = anchor.localPosition + step;
                 Transform back = controller.backButton != null ? controller.backButton.transform : null;
-                if (back != null && back.parent == lastButton.parent && Vector3.Dot(back.localPosition - lastButton.localPosition, step) > 0f)
+                if (back != null && back.parent == anchor.parent && Vector3.Dot(back.localPosition - anchor.localPosition, step) > 0f)
                 {
                     back.localPosition += step;
                 }
             }
-            button.SetButton("TSViewMod", "View Mod", null);
-            SetAllText(buttonGo, "View Mod", null);
+            button.SetButton("TSViewMod_" + kind, title, null);
+            SetAllText(buttonGo, title, null);
 
             // --- panel ---
-            BaseMenuPanelController templatePanel = template.panelController;
             var holder = new GameObject("TSViewMod_Holder");
             holder.SetActive(false);
             GameObject panelGo = Instantiate(templatePanel.gameObject, holder.transform, false);
-            panelGo.name = "TSViewMod_PanelViewMod";
+            panelGo.name = "TSViewMod_Panel" + kind;
             foreach (BaseMenuPanelController old in panelGo.GetComponents<BaseMenuPanelController>())
             {
                 DestroyImmediate(old);
@@ -124,7 +135,7 @@ namespace TSViewMod
             Destroy(holder);
 
             var panel = panelGo.AddComponent<ViewModPanel>();
-            panel.Build(DescribeTemplate(templatePanel));
+            panel.Build(templatePanel.name, title, kind);
 
             // --- wiring, as OptionsMenuController.Awake does for its own panels ---
             var entry = new OptionMenuPanelData { menuButton = button, panelController = panel };
@@ -137,7 +148,6 @@ namespace TSViewMod
 
             var injected = new Injected { controller = controller, button = button, panel = panel };
             EnsureNav(injected);
-            Loader.Log("options page: added View Mod to " + controller.name + " (template " + templatePanel.name + ", " + most + " rows)\n" + Dump(controller.transform, 0, 4));
             return injected;
         }
 
@@ -164,11 +174,6 @@ namespace TSViewMod
                 return new Vector3(home.x, home.y, template.transform.localPosition.z);
             }
             return template.transform.localPosition;
-        }
-
-        private static string DescribeTemplate(BaseMenuPanelController template)
-        {
-            return template.name;
         }
 
         private static void StripLocalisation(GameObject go)
@@ -222,6 +227,12 @@ namespace TSViewMod
         }
     }
 
+    public enum PanelKind
+    {
+        Settings,
+        Keys
+    }
+
     public class ViewModPanel : BaseMenuPanelController
     {
         private class Row
@@ -238,8 +249,11 @@ namespace TSViewMod
         private static Config Cfg => ViewCamera.Instance != null ? ViewCamera.Instance.Config : null;
         private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
-        public void Build(string templateName)
+        private PanelKind m_kind;
+
+        public void Build(string templateName, string title, PanelKind kind)
         {
+            m_kind = kind;
             OptionMenuButtonController[] existing = GetComponentsInChildren<OptionMenuButtonController>(true);
             Array.Sort(existing, (a, b) => b.transform.localPosition.y.CompareTo(a.transform.localPosition.y));
             OptionMenuButtonController first = existing[0];
@@ -274,11 +288,18 @@ namespace TSViewMod
             }
             if (loose.Count == 1)
             {
-                loose[0].SetText("View Mod");
+                loose[0].SetText(title);
             }
 
             Loader.Log("options page: template row\n" + OptionsPage.Dump(first.transform, 0, 6));
-            AddRows(first, spacing);
+            if (kind == PanelKind.Keys)
+            {
+                AddKeyRows(first, spacing);
+            }
+            else
+            {
+                AddRows(first, spacing);
+            }
             Loader.Log("options page: built " + m_rows.Count + " rows from " + templateName + ", spacing " + spacing.ToString("0") + "\n" + OptionsPage.Dump(transform, 0, 3));
         }
 
@@ -406,6 +427,84 @@ namespace TSViewMod
         protected override void OnEnter()
         {
             s_comingSoon = false;
+            if (m_kind == PanelKind.Keys)
+            {
+                ShowKeys();
+            }
+        }
+
+        // ---------- Keyboard & Mouse page ----------
+        // A page selector row, then read-only "action: keys" rows. Game keys are read live from Rewired, so they
+        // stay right if the game's bindings change.
+        private static readonly string[] KeyPages = { "Movement & Combat", "Menus & Items", "View Mod" };
+        private int m_keyPage;
+        private OptionMenuButtonController m_pageRow;
+        private readonly List<OptionMenuButtonController> m_keyRows = new List<OptionMenuButtonController>();
+
+        private void AddKeyRows(OptionMenuButtonController first, float spacing)
+        {
+            Vector3 top = first.transform.localPosition;
+            for (int i = 0; i < 8; i++)
+            {
+                OptionMenuButtonController control = i == 0 ? first : Instantiate(first.gameObject, first.transform.parent, false).GetComponent<OptionMenuButtonController>();
+                control.name = "TSViewMod_KeyRow_" + i;
+                control.transform.localPosition = top + Vector3.down * spacing * i;
+                if (i == 0)
+                {
+                    m_pageRow = control;
+                    SetLabel(control, "Show");
+                    m_options.Add(new OptionMenuButtonBaseBehaviour(control, d =>
+                    {
+                        m_keyPage = (m_keyPage + (d == 0 ? 1 : d) + KeyPages.Length) % KeyPages.Length;
+                        ShowKeys();
+                    }, ShowKeys));
+                    m_nav.Add(control.GetNavItem());
+                }
+                else
+                {
+                    // Read-only: no arrows, not in the navigation.
+                    foreach (Component arrow in new Component[] { control.Button_Minus, control.Button_Plus })
+                    {
+                        if (arrow != null)
+                        {
+                            arrow.gameObject.SetActive(false);
+                        }
+                    }
+                    m_keyRows.Add(control);
+                }
+            }
+            ShowKeys();
+        }
+
+        private void ShowKeys()
+        {
+            if (m_pageRow == null)
+            {
+                return;
+            }
+            m_pageRow.SetText(KeyPages[m_keyPage]);
+            List<KeyValuePair<string, string>> entries = KeyBindings.Page(m_keyPage);
+            for (int i = 0; i < m_keyRows.Count; i++)
+            {
+                bool used = i < entries.Count;
+                m_keyRows[i].gameObject.SetActive(used);
+                if (used)
+                {
+                    SetLabel(m_keyRows[i], entries[i].Key);
+                    m_keyRows[i].SetText(entries[i].Value);
+                }
+            }
+        }
+
+        private static void SetLabel(OptionMenuButtonController control, string label)
+        {
+            foreach (TMP_Text text in control.GetComponentsInChildren<TMP_Text>(true))
+            {
+                if (text != control.selectorText && !Inside(text, control.Button_Minus) && !Inside(text, control.Button_Plus) && !Inside(text, control.Button_Center))
+                {
+                    text.SetText(label);
+                }
+            }
         }
 
         public override INavItem GetMainNavItem()
