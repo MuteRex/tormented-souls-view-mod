@@ -71,6 +71,12 @@ namespace TSViewMod
             s_instance = this;
         }
 
+        // For Survey: whether this room's fit is already cached (so the survey can skip it).
+        public static bool IsCached(string scene, string tab, string highlightName)
+        {
+            return FitCache.TryGet(scene + "|" + tab + "|" + highlightName, out Fit _);
+        }
+
         // For Survey: true once the map has been marked in this scene and every room on it has its fit
         // (from the cache or freshly computed). Lines describe each room; weak = no usable fit.
         public static bool TryGetSceneResult(string scene, out List<string> lines, out bool weak)
@@ -84,7 +90,7 @@ namespace TSViewMod
             }
             foreach (RoomDot room in marked.rooms)
             {
-                bool roomWeak = !room.hasFit || room.fit.iou < 0.5f;
+                bool roomWeak = !room.hasFit || room.fit.iou < 0.25f; // long corridors fit fine around 0.3
                 weak |= roomWeak;
                 lines.Add(room.key + (room.hasFit
                     ? "  orientation " + room.fit.orientation + " scale " + room.fit.scale.ToString("0.0000") + " IoU " + room.fit.iou.ToString("0.00")
@@ -948,7 +954,7 @@ namespace TSViewMod
                 if (tri.vertices == null || tri.vertices.Length == 0 || tri.indices == null || tri.indices.Length < 3)
                 {
                     log.Append(", no navmesh");
-                    return null;
+                    return BuildFromFloor(log);
                 }
                 Rect2 rect = Rect2.Empty;
                 foreach (Vector3 p in tri.vertices)
@@ -980,6 +986,106 @@ namespace TSViewMod
                 }
                 log.Append(", navmesh ").Append(rect).Append(' ').Append(m.count).Append(" cells");
                 return m.count > 0 ? m : null;
+            }
+
+            // Rooms without a navmesh (no enemies): probe the floor with physics instead. A cell counts when a ray
+            // from chest height lands on a flat surface near the player's floor level with standing room above it,
+            // and it's connected to where the player stands (drops furniture tops, walls and outside areas).
+            private static WorldMask BuildFromFloor(StringBuilder log)
+            {
+                PlayerController player = FindObjectOfType<PlayerController>();
+                if (player == null)
+                {
+                    return null;
+                }
+                Vector3 origin = player.transform.position;
+                Scene scene = SceneManager.GetActiveScene();
+                Rect2 rect = Rect2.Empty;
+                foreach (GameObject root in scene.GetRootGameObjects())
+                {
+                    foreach (Collider collider in root.GetComponentsInChildren<Collider>())
+                    {
+                        Bounds b = collider.bounds;
+                        if (collider.isTrigger || b.size.x > 150f || b.size.z > 150f || b.max.y < origin.y - 1f || b.min.y > origin.y + 2.5f)
+                        {
+                            continue;
+                        }
+                        rect.Add(new Vector2(b.min.x, b.min.z));
+                        rect.Add(new Vector2(b.max.x, b.max.z));
+                    }
+                }
+                float cell = Mathf.Max(rect.Size.x, rect.Size.y) / 96f;
+                if (!(cell > 0f) || cell > 2f)
+                {
+                    log.Append(", no floor colliders");
+                    return null;
+                }
+                var m = new WorldMask { rect = rect, cell = cell };
+                m.w = Mathf.CeilToInt(rect.Size.x / cell) + 1;
+                m.h = Mathf.CeilToInt(rect.Size.y / cell) + 1;
+                var floor = new bool[m.w * m.h];
+                const QueryTriggerInteraction noTriggers = QueryTriggerInteraction.Ignore;
+                for (int y = 0; y < m.h; y++)
+                {
+                    for (int x = 0; x < m.w; x++)
+                    {
+                        Vector3 top = new Vector3(rect.min.x + (x + 0.5f) * cell, origin.y + 1.6f, rect.min.y + (y + 0.5f) * cell);
+                        if (Physics.CheckSphere(top, 0.15f, ~0, noTriggers)
+                            || !Physics.Raycast(top, Vector3.down, out RaycastHit hit, 2.6f, ~0, noTriggers)
+                            || hit.normal.y < 0.7f || Mathf.Abs(hit.point.y - origin.y) > 0.6f)
+                        {
+                            continue;
+                        }
+                        floor[y * m.w + x] = !Physics.CheckCapsule(hit.point + Vector3.up * 0.45f, hit.point + Vector3.up * 1.4f, 0.12f, ~0, noTriggers);
+                    }
+                }
+                // Flood fill from the floor cell nearest the player.
+                int start = -1;
+                float best = float.MaxValue;
+                for (int i = 0; i < floor.Length; i++)
+                {
+                    if (!floor[i])
+                    {
+                        continue;
+                    }
+                    Vector2 c = new Vector2(rect.min.x + (i % m.w + 0.5f) * cell, rect.min.y + (i / m.w + 0.5f) * cell);
+                    float d = (c - new Vector2(origin.x, origin.z)).sqrMagnitude;
+                    if (d < best)
+                    {
+                        best = d;
+                        start = i;
+                    }
+                }
+                m.mask = new bool[floor.Length];
+                if (start >= 0 && best < 4f)
+                {
+                    var stack = new Stack<int>();
+                    stack.Push(start);
+                    m.mask[start] = true;
+                    while (stack.Count > 0)
+                    {
+                        int i = stack.Pop();
+                        int cx = i % m.w;
+                        int cy = i / m.w;
+                        foreach (int n in new[] { cx > 0 ? i - 1 : -1, cx < m.w - 1 ? i + 1 : -1, cy > 0 ? i - m.w : -1, cy < m.h - 1 ? i + m.w : -1 })
+                        {
+                            if (n >= 0 && floor[n] && !m.mask[n])
+                            {
+                                m.mask[n] = true;
+                                stack.Push(n);
+                            }
+                        }
+                    }
+                }
+                foreach (bool on in m.mask)
+                {
+                    if (on)
+                    {
+                        m.count++;
+                    }
+                }
+                log.Append(", floor probe ").Append(rect).Append(' ').Append(m.count).Append(" cells");
+                return m.count > 20 ? m : null;
             }
 
             private void Fill(Vector2 a, Vector2 b, Vector2 c)

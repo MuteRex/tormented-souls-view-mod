@@ -19,7 +19,6 @@ namespace TSViewMod
 
         private static string DataFile(string name) => Path.Combine(Application.dataPath, name);
         private static string FlagPath => DataFile("TSViewMod_survey.flag");
-        private static string DonePath => DataFile("TSViewMod_survey_done.txt");
         private static string ReportPath => DataFile("TSViewMod_survey_report.txt");
 
         private const string MapKey = "Items/Map_Zoom.prefab";
@@ -91,6 +90,7 @@ namespace TSViewMod
             }
             yield return new WaitForSecondsRealtime(3f);
             LowPower(); // the game applies its own settings on load
+            GodMode();
 
             // 2. The map item, off screen, with its own scripts off (they expect the inspect screen).
             AsyncOperationHandle<GameObject> handle = Addressables.LoadAssetAsync<GameObject>(MapKey);
@@ -117,23 +117,32 @@ namespace TSViewMod
                 yield break;
             }
 
-            // 3. Every room drawn on the map, minus ones finished by an earlier (interrupted) run.
-            var done = new HashSet<string>(File.Exists(DonePath) ? File.ReadAllLines(DonePath) : new string[0]);
+            // 3. Every room drawn on the map whose fit isn't cached yet (so a rerun only visits what's missing).
             var scenes = new List<string>();
+            var cached = new HashSet<string>();
             foreach (MapHelperStringToGameObject entry in helper.sceneToGameObjects)
             {
-                if (entry != null && entry.highlight != null && !string.IsNullOrEmpty(entry.name) && !scenes.Contains(entry.name))
+                if (entry == null || entry.highlight == null || string.IsNullOrEmpty(entry.name))
+                {
+                    continue;
+                }
+                if (!scenes.Contains(entry.name))
                 {
                     scenes.Add(entry.name);
+                    cached.Add(entry.name);
+                }
+                if (!MapMarker.IsCached(entry.name, entry.tabID, entry.highlight.name))
+                {
+                    cached.Remove(entry.name);
                 }
             }
-            Note("rooms on the map: " + scenes.Count + ", already surveyed: " + scenes.FindAll(done.Contains).Count);
+            Note("rooms on the map: " + scenes.Count + ", already fitted: " + cached.Count);
 
             int index = 0;
             foreach (string scene in scenes)
             {
                 index++;
-                if (done.Contains(scene))
+                if (cached.Contains(scene))
                 {
                     continue;
                 }
@@ -155,6 +164,7 @@ namespace TSViewMod
                         m_weak++;
                         continue;
                     }
+                    GodMode();
                     yield return new WaitForSecondsRealtime(1.5f); // navmesh + entrance points settle
                 }
                 List<string> lines = null;
@@ -175,15 +185,19 @@ namespace TSViewMod
                     m_weak++;
                 }
                 Loader.Log("survey: " + scene + " took " + (Time.realtimeSinceStartup - started).ToString("0.0") + " s");
-                File.AppendAllText(DonePath, scene + "\n");
             }
             Note("all rooms visited");
-            try
+        }
+
+        // The game's own debug god mode (PlayerController ignores damage while it's on). It lives in the save data,
+        // which survey.py restores afterwards.
+        private static void GodMode()
+        {
+            UserDataManager data = FindObjectOfType<UserDataManager>();
+            if (data != null && !data.GetGodModeStatus())
             {
-                File.Delete(DonePath);
-            }
-            catch (Exception)
-            {
+                data.SetGodModeStatus(true);
+                Loader.Log("survey: god mode on");
             }
         }
 

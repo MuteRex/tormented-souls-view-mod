@@ -131,3 +131,8 @@ Offline room extraction: precompute world->map fits for every room so unvisited 
 - installer/survey.py: refuses if TormentedSouls.exe runs, installs, backs up Saves + pfx/user.reg (low-res window
   persists via PlayerPrefs; enemy/door code can autosave), stops ts-save-backup.path, launches via Steam, renices,
   restores everything after. Untested in game yet.
+- v1.0.3: rooms without a navmesh (no enemies: Bathroom_A, DeliveryRoom, MaternityRoom, *_P ...) get a physics floor
+  probe instead (raycast from chest height, flat hit within 0.6 m of the player's floor, standing-room capsule,
+  flood fill from the player). Survey turns on the game's own god mode (UserDataManager.SetGodModeStatus, checked in
+  PlayerController damage), skips rooms whose fits are all cached (no done-file), WEAK threshold IoU < 0.25.
+- Debug teleport side effect: PlayerMovementManager.IsInLightZone NRE spam (game code), harmless.
