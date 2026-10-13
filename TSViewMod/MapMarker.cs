@@ -25,6 +25,7 @@ namespace TSViewMod
         {
             public GameObject highlight;
             public Transform dot;
+            public Transform arrow;
             public Fit fit;
             public bool hasFit;
             public bool ready;
@@ -205,10 +206,15 @@ namespace TSViewMod
                         continue;
                     }
                     Vector3 local;
+                    Vector3 heading = Vector3.zero; // her facing, in the sheet's local space
                     if (room.hasFit && m_player != null)
                     {
                         Vector3 p = m_player.transform.position;
                         Vector2 uv = room.fit.Apply(new Vector2(p.x, p.z));
+                        Vector3 f = m_player.transform.forward;
+                        Vector2 ahead = room.fit.Apply(new Vector2(p.x + f.x, p.z + f.z)) - uv;
+                        heading[marked.uAxis] = ahead.x;
+                        heading[marked.vAxis] = ahead.y;
                         Vector2 rawUv = uv;
                         // The player is in this room, so keep the dot inside the room's shape on the map
                         // (navmesh areas like stair landings can map slightly past the drawn outline).
@@ -255,12 +261,68 @@ namespace TSViewMod
                     {
                         dotRenderer.enabled = facing;
                     }
+                    UpdateArrow(room, sheet.TransformDirection(heading), front, facing && (ViewCamera.Instance == null || ViewCamera.Instance.Config.MapArrow), pulse);
                     UpdateDoorDots(marked, room);
                     float size = marked.dotSize * pulse;
                     Vector3 parentScale = room.dot.parent != null ? room.dot.parent.lossyScale : Vector3.one;
                     room.dot.localScale = new Vector3(size / Safe(parentScale.x), size / Safe(parentScale.y), size / Safe(parentScale.z));
                 }
             }
+        }
+
+        // RE2-style pointer on the dot showing which way she faces. A child of the dot, so it shows, hides and
+        // scales with it (the pulse is cancelled out).
+        private static Mesh s_arrowMesh;
+
+        private void UpdateArrow(RoomDot room, Vector3 heading, Vector3 front, bool show, float pulse)
+        {
+            heading -= front * Vector3.Dot(heading, front);
+            show &= heading.sqrMagnitude > 1e-12f;
+            if (room.arrow == null)
+            {
+                if (!show)
+                {
+                    return;
+                }
+                var go = new GameObject("TSViewMod_MapArrow");
+                go.layer = room.dot.gameObject.layer;
+                go.transform.SetParent(room.dot, worldPositionStays: false);
+                go.AddComponent<MeshFilter>().sharedMesh = ArrowMesh();
+                MeshRenderer renderer = go.AddComponent<MeshRenderer>();
+                renderer.sharedMaterial = room.dot.GetComponent<Renderer>().sharedMaterial;
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
+                room.arrow = go.transform;
+            }
+            Renderer arrowRenderer = room.arrow.GetComponent<Renderer>();
+            if (arrowRenderer.enabled != show)
+            {
+                arrowRenderer.enabled = show;
+            }
+            if (!show)
+            {
+                return;
+            }
+            heading.Normalize();
+            float size = room.dot.lossyScale.x / Mathf.Max(pulse, 0.01f); // the dot's size without the pulse
+            room.arrow.rotation = Quaternion.LookRotation(front, heading);
+            room.arrow.position = room.dot.position + heading * size * 0.55f;
+            Vector3 dotScale = room.dot.lossyScale;
+            room.arrow.localScale = new Vector3(size / Safe(dotScale.x), size / Safe(dotScale.y), size / Safe(dotScale.z));
+        }
+
+        // Flat triangle pointing along +y, both sides drawn.
+        private static Mesh ArrowMesh()
+        {
+            if (s_arrowMesh == null)
+            {
+                s_arrowMesh = new Mesh { name = "TSViewMod_Arrow" };
+                s_arrowMesh.vertices = new[] { new Vector3(0f, 1.1f, 0f), new Vector3(-0.55f, 0f, 0f), new Vector3(0.55f, 0f, 0f) };
+                s_arrowMesh.triangles = new[] { 0, 1, 2, 0, 2, 1 };
+                s_arrowMesh.RecalculateNormals();
+                s_arrowMesh.RecalculateBounds();
+            }
+            return s_arrowMesh;
         }
 
         private static readonly Color DoorBlue = new Color(0.1f, 0.45f, 1f, 1f);

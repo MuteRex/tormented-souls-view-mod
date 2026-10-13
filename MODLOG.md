@@ -190,3 +190,6 @@ Mouse and keyboard: pointer captured/hidden while walking in the mod views (Lock
 
 ## v1.3.0 (2026-10-13)
 User confirmed mouse support (v1.2.2). Keyboard: the game maps movement keys to the "DPAD" actions = tank controls (PlayerMovement.Movement dpad branch). While a mod view is live, KeyboardMovement adds the same keys to "Horizontal/Vertical Axis" in the keyboard Rewired maps (UserInputManager uses the analog, camera-relative path when both are non-zero) and removes them again outside. Analog path picks walk/run by magnitude (m_walkInputRange 0.2-0.7), so for keys max is raised to 1.5 unless Run is held. Config KeyboardCameraRelative. Side effect: no keyboard quick-turn (S+Run) in mod views.
+
+## v1.3.1 (2026-10-13)
+Game camera takes over while the player animator has Grabbed/Dead set (or is in the Grabbed state) + 0.8 s, then the mod view snaps back behind her (GameCameraOnGrab). Map: red dot gets a facing pointer (flat double-sided triangle, child of the dot, direction = fit.Apply(p+forward)-fit.Apply(p) in sheet space; MapArrow). Door camera-carry idea dropped: rooms load behind a loading screen anyway.

@@ -30,6 +30,8 @@ namespace TSViewMod
         public float FirstPersonFieldOfView = 70f;
         public bool HideBodyInFirstPerson = true;
         public bool MapMarker = true;
+        public bool MapArrow = true;
+        public bool GameCameraOnGrab = true;
         public bool InspectReset = true;
         public KeyCode ResetRotationKey = KeyCode.R;
         public int ResetRotationMouseButton = 2;
@@ -83,6 +85,8 @@ namespace TSViewMod
                 config.FirstPersonFieldOfView = GetFloat(values, "FirstPersonFieldOfView", config.FirstPersonFieldOfView);
                 config.HideBodyInFirstPerson = GetBool(values, "HideBodyInFirstPerson", config.HideBodyInFirstPerson);
                 config.MapMarker = GetBool(values, "MapMarker", config.MapMarker);
+                config.MapArrow = GetBool(values, "MapArrow", config.MapArrow);
+                config.GameCameraOnGrab = GetBool(values, "GameCameraOnGrab", config.GameCameraOnGrab);
                 config.InspectReset = GetBool(values, "InspectReset", config.InspectReset);
                 config.ResetRotationKey = GetKey(values, "ResetRotationKey", config.ResetRotationKey);
                 config.ResetRotationMouseButton = (int)GetFloat(values, "ResetRotationMouseButton", config.ResetRotationMouseButton);
@@ -136,6 +140,11 @@ namespace TSViewMod
                 "HideBodyInFirstPerson=" + HideBodyInFirstPerson,
                 "# Red dot on your current room in the map screen.",
                 "MapMarker=" + MapMarker,
+                "# Pointer on the red dot showing which way she faces.",
+                "MapArrow=" + MapArrow,
+                "# Hand over to the game's own camera while an enemy grabs her and when she dies (those animations",
+                "# were made for the fixed cameras).",
+                "GameCameraOnGrab=" + GameCameraOnGrab,
                 "# While inspecting an item: this key, this mouse button (0 left, 1 right, 2 middle, 3-6 extra, -1 none)",
                 "# or right-stick click resets its rotation.",
                 "InspectReset=" + InspectReset,

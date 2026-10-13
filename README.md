@@ -5,6 +5,7 @@ A mod for **Tormented Souls** (PC, Unity 2020.3 / Mono) that adds:
 - **Third-person and first-person cameras** you can toggle with a key, on top of the original fixed angles.
   Puzzle close-ups and cutscenes still use the game's own cameras.
 - **A "you are here" red dot on the map** at your actual position, with the current room tinted red.
+- **Facing arrow on the map dot** and the game's own camera during enemy grabs and deaths (cfg `MapArrow`, `GameCameraOnGrab`).
 - **RE2-style "Reset View" while inspecting items.** Maps turn to lie flat and face you. A prompt appears in the button bar.
 
 No BepInEx or other loader is needed, and no game code is patched. The mod is one DLL plus two small
