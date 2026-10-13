@@ -257,7 +257,9 @@ namespace TSViewMod
                 lookX = Mathf.Clamp(lookX, -maxStep, maxStep);
             }
             m_yaw += lookX;
-            m_pitch = Mathf.Clamp(m_pitch - lookY, m_mode == ViewMode.FirstPerson ? -80f : -25f, 75f); // many rooms have no ceiling
+            m_pitch = m_mode == ViewMode.FirstPerson
+                ? Mathf.Clamp(m_pitch - lookY, -80f, 75f)
+                : Mathf.Clamp(m_pitch - lookY, -15f, 45f); // RE-like tilt range; many rooms have no ceiling
         }
 
         private void PlaceCamera(CinemachineBrain brain)
@@ -433,7 +435,7 @@ namespace TSViewMod
             foreach (RaycastHit hit in Physics.SphereCastAll(pivot, radius, dir, distance, ~0, QueryTriggerInteraction.Ignore))
             {
                 if (hit.collider.transform.IsChildOf(player) || hit.collider.attachedRigidbody != null && !hit.collider.attachedRigidbody.isKinematic
-                    || IgnoredByCamera(hit.collider))
+                    || IgnoredByCamera(hit.collider) || WaistHigh(hit.collider, player.position.y))
                 {
                     continue;
                 }
@@ -489,6 +491,14 @@ namespace TSViewMod
                 camera.clearFlags = CameraClearFlags.SolidColor;
                 camera.backgroundColor = Color.black;
             }
+        }
+
+        // Railings, banisters, tables, counters and benches: the camera looks over/through them (as in RE2) instead
+        // of being pushed into her head. Floors (top near her feet) and ceilings (above her head) still count.
+        private static bool WaistHigh(Collider collider, float feet)
+        {
+            Bounds b = collider.bounds;
+            return b.size.y < 1.4f && b.max.y > feet + 0.3f && b.max.y < feet + 1.6f && b.min.y > feet - 0.6f;
         }
 
         private void UpdateBodyVisibility(bool hide)

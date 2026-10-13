@@ -176,3 +176,4 @@ Offline room extraction: precompute world->map fits for every room so unvisited 
   pitch limited to -25 (many rooms have no ceiling); OrbitLimit 120 deg from her back (camera follows round at
   360 deg/s when exceeded) and MaxTurnSpeed 300 deg/s, both in cfg.
 - v1.1.2: user: right-stick click must only be Reset View; controller camera switching only via Options > View Mod. Removed R3 view cycling, its cfg key and menu row.
+- v1.1.3 (video 16-09-03): stair railing collapsed the arm into her head (she faded -> pseudo first person); door: pitch swung to near top-down / from below. Fix: waist-high colliders (height < 1.4 m, top between feet+0.3 and feet+1.6) don't block the camera; third-person pitch -15..45. Items-cleared map tint (RE2 style) researched and put on hold by the user.
