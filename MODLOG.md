@@ -205,3 +205,9 @@ Options -> "Keyboard & Mouse" category (second injected category; OptionsPage.Ad
 
 ## v1.3.5-beta (2026-10-13)
 Performance: RoomBounds (new) builds the walkable mask over frames (2 ms budget, floor probe yields per row) instead of in one go, and the map fit reuses it rather than rebuilding; the options-menu search (Resources.FindObjectsOfTypeAll) only runs for 5 s after scene loads (nav re-insert stays, cheap). Cleanup, no behaviour change: MapMarker split into partial files (PoseVotes, Fitting, WorldMask, MapMask, Shapes); ViewCamera side jobs moved to CameraCollision, PadInput, CursorCapture, ScriptedAttackWatch, VoidFill; Config is table-driven (Layout) with pure Parse/Serialize, covered by xunit tests (tests/TSViewMod.Tests) incl. a legacy-serializer comparison and golden default.cfg.
+
+## v1.3.6-beta (2026-10-14)
+First person dropped for good (the separate experimental repo is gone too). Removed the FirstPerson view mode, the
+"First Person (Coming Soon)" Camera option, FirstPersonFieldOfView / HideBodyInFirstPerson settings (old cfg lines
+are ignored), and the head-bone lookup only it used. F6 and the Camera option now toggle Original <-> Third person.
+README: development is light from here; issues welcome.

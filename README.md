@@ -14,7 +14,6 @@ Unity 2020.3 / Mono).
 - **Third-person camera** on top of the original fixed angles, switchable in-game. Spring-arm collision, auto
   shoulder swap, auto follow when she runs curves, and black instead of the void where the set has no geometry.
   Puzzle close-ups, cutscenes, enemy grabs and deaths still use the game's own cameras.
-  (First person: coming soon.)
 - **Options → View Mod** page in the game's own menu style: camera, distance, height, shoulder, field of view,
   stick and mouse speed, invert Y, auto follow, map marker. Fully usable with a controller.
 - **Map marker:** a red dot at your actual position on the map, with an arrow showing which way she faces, and
@@ -78,11 +77,16 @@ map in each room.
 - The map dot falls back to the room centre in Pharmacy and Bathroom_E, and may be less accurate in a few large
   rooms.
 
+## Support
+
+Development on this mod is light from here on: occasional fixes, no promised schedule. If something breaks
+or looks wrong, open an issue in the [Issues](https://github.com/MuteRex/tormented-souls-view-mod/issues) tab with what happened, where in the game, and your
+`TSViewMod.log` (an F9 snapshot helps). I'll get to it when I can.
+
 ## For developers
 
 - `installer/survey.py` fits every map room unattended (backs up and restores saves; see the script's header). Its
   defaults are for the author's setup; pass `--game`, `--compat` and `--url` for yours.
-- The first-person camera is developed separately and isn't part of this repository yet.
 - `tests/` has unit tests for the pure parts (config format): `dotnet test tests/TSViewMod.Tests`.
 - `MODLOG.md` has engine notes, decisions and gotchas.
 

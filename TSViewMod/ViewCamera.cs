@@ -9,8 +9,7 @@ namespace TSViewMod
     public enum ViewMode
     {
         Original,
-        ThirdPerson,
-        FirstPerson
+        ThirdPerson
     }
 
     // Mod vcam one priority above the game's main camera; yields when the game drops that to 0 (puzzles,
@@ -27,7 +26,6 @@ namespace TSViewMod
         private CinemachineVirtualCamera m_vcam;
         private GameplayCameraManager m_cameraManager;
         private PlayerController m_player;
-        private Transform m_head;
 
         private float m_yaw;
         private float m_pitch;
@@ -66,10 +64,6 @@ namespace TSViewMod
 
         public static ViewCamera Instance { get; private set; }
 
-        // First person is developed on the first-person branch.
-        public const bool FirstPersonAvailable = false;
-        public const string FirstPersonVersion = "0.1.0";
-
         public Config Config => m_config;
 
         private void Awake()
@@ -91,12 +85,7 @@ namespace TSViewMod
 
         public static ViewMode Next(ViewMode mode, int direction)
         {
-            ViewMode next = (ViewMode)(((int)mode + direction + 3) % 3);
-            if (next == ViewMode.FirstPerson && !FirstPersonAvailable)
-            {
-                next = (ViewMode)(((int)next + direction + 3) % 3);
-            }
-            return next;
+            return (ViewMode)(((int)mode + direction + 2) % 2);
         }
 
         private bool InFreePlay()
@@ -113,7 +102,7 @@ namespace TSViewMod
             CinemachineVirtualCameraBase mainCamera = m_cameraManager != null ? MainVirtualCameraField?.GetValue(m_cameraManager) as CinemachineVirtualCameraBase : null;
             bool canTakeOver = m_mode != ViewMode.Original && m_player != null && mainCamera != null && mainCamera.Priority > 0 && !m_scripted.Active(m_player, m_config.GameCameraOnGrab);
             m_vcam.Priority = canTakeOver ? mainCamera.Priority + 1 : 0;
-            bool hideBody = canTakeOver && (m_mode == ViewMode.FirstPerson && m_config.HideBodyInFirstPerson || m_mode == ViewMode.ThirdPerson && m_tooClose);
+            bool hideBody = canTakeOver && m_mode == ViewMode.ThirdPerson && m_tooClose;
             UpdateBodyVisibility(hideBody);
             CinemachineBrain brain = m_cameraManager != null ? m_cameraManager.GetBrain() : null;
             bool live = canTakeOver && brain != null && brain.ActiveVirtualCamera == (ICinemachineCamera)m_vcam;
@@ -184,7 +173,7 @@ namespace TSViewMod
             m_mode = mode;
             m_snapNextFrame = true;
             Loader.Log("view -> " + mode);
-            ShowToast(mode == ViewMode.Original ? "Camera: Original (fixed angles)" : mode == ViewMode.ThirdPerson ? "Camera: Third person" : "Camera: First person");
+            ShowToast(mode == ViewMode.Original ? "Camera: Original (fixed angles)" : "Camera: Third person");
         }
 
         private static ViewMode ParseMode(string s)
@@ -194,9 +183,6 @@ namespace TSViewMod
                 case "thirdperson":
                 case "third":
                     return ViewMode.ThirdPerson;
-                case "firstperson":
-                case "first":
-                    return FirstPersonAvailable ? ViewMode.FirstPerson : ViewMode.ThirdPerson;
                 default:
                     return ViewMode.Original;
             }
@@ -221,16 +207,10 @@ namespace TSViewMod
             {
                 RestoreBody();
                 m_player = FindObjectOfType<PlayerController>();
-                m_head = null;
                 m_snapNextFrame = true;
                 if (m_player != null)
                 {
-                    Animator animator = m_player.GetComponentInChildren<Animator>();
-                    if (animator != null && animator.isHuman)
-                    {
-                        m_head = animator.GetBoneTransform(HumanBodyBones.Head);
-                    }
-                    Loader.Log("player found: " + m_player.name + (m_head != null ? ", head bone " + m_head.name : ", no head bone"));
+                    Loader.Log("player found: " + m_player.name);
                 }
             }
         }
@@ -287,19 +267,16 @@ namespace TSViewMod
                 }
             }
             m_yaw += lookX;
-            m_pitch = m_mode == ViewMode.FirstPerson
-                ? Mathf.Clamp(m_pitch - lookY, -80f, 75f)
-                : Mathf.Clamp(m_pitch - lookY, -15f, 45f); // many rooms have no ceiling
+            m_pitch = Mathf.Clamp(m_pitch - lookY, -15f, 45f); // many rooms have no ceiling
         }
 
         private void PlaceCamera(CinemachineBrain brain)
         {
             Transform playerTransform = m_player.transform;
-            Vector3 headPosition = m_head != null ? m_head.position : playerTransform.position + Vector3.up * 1.55f;
             if (m_snapNextFrame)
             {
                 m_yaw = playerTransform.eulerAngles.y;
-                m_pitch = m_mode == ViewMode.FirstPerson ? 0f : 12f;
+                m_pitch = 12f;
                 m_pivot = playerTransform.position + Vector3.up * m_config.PivotHeight;
                 m_smoothDistance = -1f;
                 m_lastPlayerPos = playerTransform.position;
@@ -324,55 +301,46 @@ namespace TSViewMod
             }
             Quaternion rotation = Quaternion.Euler(m_pitch, m_yaw, 0f);
             Vector3 position;
-            if (m_mode == ViewMode.FirstPerson)
+            // The player rigidbody isn't interpolated, so smooth the pivot.
+            Vector3 targetPivot = playerTransform.position + Vector3.up * m_config.PivotHeight;
+            m_pivot = Vector3.Lerp(m_pivot, targetPivot, 1f - Mathf.Exp(-20f * Time.unscaledDeltaTime));
+            UpdateShoulderSide(rotation, playerTransform);
+            m_side = Mathf.SmoothDamp(m_side, m_sideTarget, ref m_sideVelocity, 0.35f, Mathf.Infinity, Time.unscaledDeltaTime);
+
+            // Spring arm from the shoulder: only the arm length changes, never the height.
+            Vector3 shoulder = CameraCollision.ResolveCollision(m_pivot, m_pivot + rotation * new Vector3(m_config.ShoulderOffset * m_side, 0.1f, 0f), playerTransform);
+            Vector3 back = rotation * Vector3.back;
+            float full = m_config.ThirdPersonDistance;
+            float target = Vector3.Distance(shoulder, CameraCollision.Constrain(shoulder, shoulder + back * full, playerTransform));
+
+            // Pull in quickly (not in one frame), hold, then ease back out.
+            float now = Time.unscaledTime;
+            float dt = Mathf.Max(Time.unscaledDeltaTime, 1e-4f);
+            if (m_smoothDistance < 0f)
             {
-                Quaternion flat = Quaternion.Euler(0f, m_yaw, 0f);
-                position = headPosition + Vector3.up * 0.04f + flat * Vector3.forward * 0.12f;
-                m_vcam.m_Lens.FieldOfView = m_config.FirstPersonFieldOfView;
+                m_smoothDistance = target;
+                m_distanceVelocity = 0f;
+            }
+            else if (target < m_smoothDistance)
+            {
+                if (target < m_smoothDistance - 0.03f)
+                {
+                    m_holdUntil = now + ReturnDelay;
+                }
+                m_smoothDistance = Mathf.Max(target, Mathf.SmoothDamp(m_smoothDistance, target, ref m_distanceVelocity, 0.05f, Mathf.Infinity, dt));
+                m_smoothDistance = Mathf.Min(m_smoothDistance, target + 0.25f); // never more than 25 cm "inside"
+            }
+            else if (now >= m_holdUntil)
+            {
+                m_smoothDistance = Mathf.SmoothDamp(m_smoothDistance, target, ref m_distanceVelocity, 0.45f, ReturnSpeed, dt);
             }
             else
             {
-                // The player rigidbody isn't interpolated, so smooth the pivot.
-                Vector3 targetPivot = playerTransform.position + Vector3.up * m_config.PivotHeight;
-                m_pivot = Vector3.Lerp(m_pivot, targetPivot, 1f - Mathf.Exp(-20f * Time.unscaledDeltaTime));
-                UpdateShoulderSide(rotation, playerTransform);
-                m_side = Mathf.SmoothDamp(m_side, m_sideTarget, ref m_sideVelocity, 0.35f, Mathf.Infinity, Time.unscaledDeltaTime);
-
-                // Spring arm from the shoulder: only the arm length changes, never the height.
-                Vector3 shoulder = CameraCollision.ResolveCollision(m_pivot, m_pivot + rotation * new Vector3(m_config.ShoulderOffset * m_side, 0.1f, 0f), playerTransform);
-                Vector3 back = rotation * Vector3.back;
-                float full = m_config.ThirdPersonDistance;
-                float target = Vector3.Distance(shoulder, CameraCollision.Constrain(shoulder, shoulder + back * full, playerTransform));
-
-                // Pull in quickly (not in one frame), hold, then ease back out.
-                float now = Time.unscaledTime;
-                float dt = Mathf.Max(Time.unscaledDeltaTime, 1e-4f);
-                if (m_smoothDistance < 0f)
-                {
-                    m_smoothDistance = target;
-                    m_distanceVelocity = 0f;
-                }
-                else if (target < m_smoothDistance)
-                {
-                    if (target < m_smoothDistance - 0.03f)
-                    {
-                        m_holdUntil = now + ReturnDelay;
-                    }
-                    m_smoothDistance = Mathf.Max(target, Mathf.SmoothDamp(m_smoothDistance, target, ref m_distanceVelocity, 0.05f, Mathf.Infinity, dt));
-                    m_smoothDistance = Mathf.Min(m_smoothDistance, target + 0.25f); // never more than 25 cm "inside"
-                }
-                else if (now >= m_holdUntil)
-                {
-                    m_smoothDistance = Mathf.SmoothDamp(m_smoothDistance, target, ref m_distanceVelocity, 0.45f, ReturnSpeed, dt);
-                }
-                else
-                {
-                    m_distanceVelocity = 0f;
-                }
-                position = shoulder + back * m_smoothDistance;
-                m_tooClose = m_smoothDistance < FadeDistance;
-                m_vcam.m_Lens.FieldOfView = m_config.FieldOfView;
+                m_distanceVelocity = 0f;
             }
+            position = shoulder + back * m_smoothDistance;
+            m_tooClose = m_smoothDistance < FadeDistance;
+            m_vcam.m_Lens.FieldOfView = m_config.FieldOfView;
             if (brain != null && brain.OutputCamera != null)
             {
                 m_vcam.m_Lens.FarClipPlane = Mathf.Max(brain.OutputCamera.farClipPlane, 100f);

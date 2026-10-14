@@ -28,8 +28,6 @@ namespace TSViewMod
         public string ShoulderSide = "Auto";
         public float PivotHeight = 1.45f;
         public float FieldOfView = 60f;
-        public float FirstPersonFieldOfView = 70f;
-        public bool HideBodyInFirstPerson = true;
         public bool MapMarker = true;
         public bool MapArrow = true;
         public bool GameCameraOnGrab = true;
@@ -46,13 +44,13 @@ namespace TSViewMod
         {
             (nameof(CycleViewKey), "# Tormented Souls view mod settings. Delete this file to reset to defaults.\n# Keys use Unity KeyCode names (F6, F7, V, Tab, ...)."),
             (nameof(MapMarkerKey), null),
-            (nameof(StartView), "# Original, ThirdPerson or FirstPerson"),
+            (nameof(StartView), "# Original or ThirdPerson"),
             (nameof(MouseSensitivity), "# Camera speed for mouse and for the right stick (set separately), and Y inversion for each."),
             (nameof(StickSensitivity), null),
             (nameof(InvertY), null),
             (nameof(MouseInvertY), null),
-            (nameof(LockCursor), "# Third/first person: capture and hide the mouse pointer while you walk around (released in menus)."),
-            (nameof(KeyboardCameraRelative), "# Third/first person: movement keys move her relative to the camera (like the stick) instead of the\n# game's tank controls; she walks, and runs while Run is held."),
+            (nameof(LockCursor), "# Third person: capture and hide the mouse pointer while you walk around (released in menus)."),
+            (nameof(KeyboardCameraRelative), "# Third person: movement keys move her relative to the camera (like the stick) instead of the\n# game's tank controls; she walks, and runs while Run is held."),
             (nameof(OrbitLimit), "# Third person: how far (degrees) the camera may swing round from behind her (0 = no limit),\n# and the fastest the right stick may turn it (degrees per second; the mouse is never capped)."),
             (nameof(MaxTurnSpeed), null),
             (nameof(AutoFollow), "# Third person: while she moves and you aren't steering the camera, it swings round behind her."),
@@ -62,8 +60,6 @@ namespace TSViewMod
             (nameof(ShoulderSide), "# Auto (swaps away from walls), Right or Left"),
             (nameof(PivotHeight), null),
             (nameof(FieldOfView), null),
-            (nameof(FirstPersonFieldOfView), null),
-            (nameof(HideBodyInFirstPerson), null),
             (nameof(MapMarker), "# Red dot on your current room in the map screen."),
             (nameof(MapArrow), "# Pointer on the red dot showing which way she faces."),
             (nameof(GameCameraOnGrab), "# Hand over to the game's own camera while an enemy grabs her and when she dies (those animations\n# were made for the fixed cameras)."),

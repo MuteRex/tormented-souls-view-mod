@@ -267,7 +267,6 @@ namespace TSViewMod
         }
 
         private readonly List<Row> m_rows = new List<Row>();
-        private static bool s_comingSoon;
         private readonly List<INavItem> m_nav = new List<INavItem>();
 
         private static Config Cfg => ViewCamera.Instance != null ? ViewCamera.Instance.Config : null;
@@ -331,17 +330,11 @@ namespace TSViewMod
         {
             var defs = new List<KeyValuePair<string, Row>>
             {
-                // First person shows "Coming Soon" and keeps the current camera.
-                Def("Camera", () => s_comingSoon ? "First Person (Coming Soon)" : ModeName(ViewCamera.Instance.Mode), d =>
+                Def("Camera", () => ModeName(ViewCamera.Instance.Mode), d =>
                 {
-                    ViewMode current = s_comingSoon ? ViewMode.FirstPerson : ViewCamera.Instance.Mode;
-                    ViewMode mode = (ViewMode)(((int)current + d + 3) % 3);
-                    s_comingSoon = mode == ViewMode.FirstPerson && !ViewCamera.FirstPersonAvailable;
-                    if (!s_comingSoon)
-                    {
-                        ViewCamera.Instance.SetMode(mode);
-                        Cfg.StartView = mode.ToString();
-                    }
+                    ViewMode mode = ViewCamera.Next(ViewCamera.Instance.Mode, d);
+                    ViewCamera.Instance.SetMode(mode);
+                    Cfg.StartView = mode.ToString();
                 }),
                 // Rarer settings stay in TSViewMod.cfg.
                 Def("Distance", () => Level(Cfg.ThirdPersonDistance, 0.8f, 0.2f), d => Cfg.ThirdPersonDistance = Step(Cfg.ThirdPersonDistance, d, 0.2f, 0.8f, 2.6f)),
@@ -423,7 +416,7 @@ namespace TSViewMod
 
         private static string ModeName(ViewMode mode)
         {
-            return mode == ViewMode.ThirdPerson ? "Third Person" : mode == ViewMode.FirstPerson ? "First Person" : "Original";
+            return mode == ViewMode.ThirdPerson ? "Third Person" : "Original";
         }
 
         private static string OnOff(bool b)
@@ -450,7 +443,6 @@ namespace TSViewMod
 
         protected override void OnEnter()
         {
-            s_comingSoon = false;
             if (m_kind == PanelKind.Keys)
             {
                 ShowKeys();
